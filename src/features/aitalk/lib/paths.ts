@@ -98,6 +98,7 @@ export function isAitalkAuthPath(pathWithoutLocale: string) {
   return (
     pathWithoutLocale === '/login' ||
     pathWithoutLocale === '/auth/callback' ||
+    pathWithoutLocale === '/auth/callback/client' ||
     pathWithoutLocale.startsWith('/auth/callback/')
   );
 }
