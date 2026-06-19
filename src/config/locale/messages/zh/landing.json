@@ -151,13 +151,13 @@
       "items": [
         {
           "title": "隐私政策",
-          "url": "https://protocol.aitalk.im/privacy",
-          "target": "_blank"
+          "url": "/privacy-policy",
+          "target": "_self"
         },
         {
           "title": "服务条款",
-          "url": "https://protocol.aitalk.im/termofuse",
-          "target": "_blank"
+          "url": "/terms-of-service",
+          "target": "_self"
         }
       ]
     },
