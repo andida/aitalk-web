@@ -1,0 +1,24 @@
+{
+  "metadata": {
+    "title": "域名流量档案 | SiteRise",
+    "description": "查看域名的月度流量趋势、增长变化和进入过的榜单。",
+    "keywords": "域名流量档案, 网站趋势, 流量历史, 域名增长"
+  },
+  "page": {
+    "back": "返回榜单",
+    "notFoundTitle": "未找到域名",
+    "notFoundDescription": "当前数据集中还没有这个域名。",
+    "monthlyVisits": "月访问量",
+    "growth": "增长",
+    "category": "分类",
+    "registered": "注册时间",
+    "firstSeen": "首次发现",
+    "status": "状态",
+    "trendTitle": "月度流量趋势",
+    "leaderboardTitle": "进入过的榜单",
+    "previewNotice": "公开档案展示简短预览，登录后可查看完整历史。",
+    "signin": "登录",
+    "emptyTrend": "还没有月度趋势数据。",
+    "emptyLeaderboards": "这个域名还没有进入已生成的榜单。"
+  }
+}

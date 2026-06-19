@@ -1,0 +1,116 @@
+{
+  "metadata": {
+    "title": "SiteRise Pricing | Website Traffic Intelligence Plans",
+    "description": "Choose SiteRise plans for traffic lookups, growth leaderboards, watchlists, alerts, and exports.",
+    "keywords": "SiteRise pricing, website traffic intelligence pricing, traffic analytics plans, competitor monitoring pricing"
+  },
+  "page": {
+    "title": "SiteRise Pricing",
+    "sections": {
+      "pricing": {
+        "id": "pricing",
+        "title": "Plans for repeated website discovery",
+        "description": "Start with traffic checks, then unlock leaderboards, monitoring, alerts, exports, and vertical market intelligence as your workflow grows.",
+        "groups": [
+          {
+            "name": "monthly",
+            "title": "Monthly"
+          }
+        ],
+        "items": [
+          {
+            "title": "Free",
+            "description": "For quick checks and early validation.",
+            "features_title": "Includes",
+            "features": [
+              "5 traffic lookups per day",
+              "10 domains per bulk compare",
+              "5 watchlist domains"
+            ],
+            "interval": "month",
+            "amount": 0,
+            "currency": "USD",
+            "price": "$0",
+            "unit": "",
+            "is_featured": false,
+            "tip": "Validate the workflow before upgrading.",
+            "button": {
+              "title": "Start free",
+              "url": "/sign-up",
+              "icon": "RiFlashlightFill"
+            },
+            "product_id": "free",
+            "product_name": "SiteRise Free",
+            "credits": 0,
+            "valid_days": 30,
+            "group": "monthly",
+            "plan_name": "Free"
+          },
+          {
+            "title": "Pro",
+            "description": "For founders, SEO operators, and independent builders.",
+            "label": "Recommended",
+            "features_title": "Everything in Free, plus",
+            "features": [
+              "200 traffic lookups per month",
+              "Full trending website leaderboards",
+              "100 watchlist domains",
+              "CSV export"
+            ],
+            "interval": "month",
+            "amount": 3900,
+            "currency": "USD",
+            "price": "$39",
+            "unit": "/ month",
+            "is_featured": true,
+            "tip": "Best fit for active opportunity research.",
+            "button": {
+              "title": "Unlock Pro",
+              "url": "/sign-up",
+              "icon": "RiFlashlightFill"
+            },
+            "product_id": "pro-monthly",
+            "product_name": "SiteRise Pro Monthly",
+            "credits": 200,
+            "valid_days": 30,
+            "group": "monthly",
+            "plan_name": "Pro"
+          },
+          {
+            "title": "Growth",
+            "description": "For teams monitoring markets and competitors every month.",
+            "features_title": "Everything in Pro, plus",
+            "features": [
+              "1,000 traffic lookups per month",
+              "Vertical market leaderboards",
+              "Alerts and saved reports",
+              "500 watchlist domains"
+            ],
+            "interval": "month",
+            "amount": 12900,
+            "currency": "USD",
+            "price": "$129",
+            "unit": "/ month",
+            "is_featured": false,
+            "tip": "Built for repeat market monitoring.",
+            "button": {
+              "title": "Unlock Growth",
+              "url": "/sign-up",
+              "icon": "RiFlashlightFill"
+            },
+            "product_id": "growth-monthly",
+            "product_name": "SiteRise Growth Monthly",
+            "credits": 1000,
+            "valid_days": 30,
+            "group": "monthly",
+            "plan_name": "Growth"
+          }
+        ]
+      }
+    }
+  },
+  "messages": {
+    "current_plan": "Current Plan",
+    "processing": "Processing"
+  }
+}

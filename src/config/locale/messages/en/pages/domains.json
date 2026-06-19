@@ -1,0 +1,24 @@
+{
+  "metadata": {
+    "title": "Domain Traffic Profile | SiteRise",
+    "description": "Review a domain's monthly traffic trend, growth movement, and leaderboard appearances.",
+    "keywords": "domain traffic profile, website trend, traffic history, domain growth"
+  },
+  "page": {
+    "back": "Back to leaderboards",
+    "notFoundTitle": "Domain not found",
+    "notFoundDescription": "This domain is not available in the current dataset yet.",
+    "monthlyVisits": "Monthly visits",
+    "growth": "Growth",
+    "category": "Category",
+    "registered": "Registered",
+    "firstSeen": "First seen",
+    "status": "Status",
+    "trendTitle": "Monthly traffic trend",
+    "leaderboardTitle": "Leaderboard appearances",
+    "previewNotice": "Public profiles show a short preview. Sign in to see the full history.",
+    "signin": "Sign in",
+    "emptyTrend": "No monthly trend data yet.",
+    "emptyLeaderboards": "This domain has not entered a generated leaderboard yet."
+  }
+}

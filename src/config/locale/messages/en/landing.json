@@ -1,0 +1,255 @@
+{
+  "header": {
+    "id": "header",
+    "brand": {
+      "title": "AITalk",
+      "logo": {
+        "src": "/logo.png",
+        "alt": "AITalk"
+      },
+      "url": "/"
+    },
+    "nav": {
+      "items": [
+        {
+          "title": "Features",
+          "url": "/#features",
+          "icon": "Sparkles"
+        },
+        {
+          "title": "Practice",
+          "url": "/#practice",
+          "icon": "Mic"
+        },
+        {
+          "title": "Sync",
+          "url": "/#sync",
+          "icon": "ShieldCheck"
+        },
+        {
+          "title": "Lessons",
+          "url": "/lessons",
+          "icon": "BookOpenCheck"
+        }
+      ]
+    },
+    "buttons": [
+      {
+        "title": "Start practicing",
+        "url": "/login",
+        "icon": "ArrowRight"
+      }
+    ],
+    "user_nav": {
+      "show_name": true,
+      "show_credits": false,
+      "show_sign_out": true,
+      "items": [
+        {
+          "title": "Learning home",
+          "url": "/app",
+          "icon": "LayoutDashboard"
+        },
+        {
+          "title": "Profile",
+          "url": "/me",
+          "icon": "User"
+        }
+      ]
+    },
+    "show_sign": false,
+    "show_theme": false,
+    "show_locale": true,
+    "topbanner": {}
+  },
+  "footer": {
+    "id": "footer",
+    "brand": {
+      "title": "AITalk",
+      "logo": {
+        "src": "/logo.png",
+        "alt": "AITalk"
+      },
+      "description": "AI speaking practice for language learners. Web and app use the same Supabase account and learning progress.",
+      "url": "/"
+    },
+    "nav": {
+      "items": [
+        {
+          "title": "Product",
+          "children": [
+            {
+              "title": "Features",
+              "url": "/#features",
+              "target": "_self"
+            },
+            {
+              "title": "Practice flow",
+              "url": "/#practice",
+              "target": "_self"
+            },
+            {
+              "title": "Account sync",
+              "url": "/#sync",
+              "target": "_self"
+            }
+          ]
+        },
+        {
+          "title": "Learning",
+          "children": [
+            {
+              "title": "Lessons",
+              "url": "/lessons",
+              "target": "_self"
+            },
+            {
+              "title": "Quick practice",
+              "url": "/practice",
+              "target": "_self"
+            },
+            {
+              "title": "Learning home",
+              "url": "/app",
+              "target": "_self"
+            }
+          ]
+        },
+        {
+          "title": "Account",
+          "children": [
+            {
+              "title": "Sign in",
+              "url": "/login",
+              "target": "_self"
+            },
+            {
+              "title": "Profile",
+              "url": "/me",
+              "target": "_self"
+            }
+          ]
+        }
+      ]
+    },
+    "social": {
+      "items": [
+        {
+          "title": "Email",
+          "icon": "Mail",
+          "url": "mailto:support@aitalk.app",
+          "target": "_self"
+        }
+      ]
+    },
+    "agreement": {
+      "items": [
+        {
+          "title": "Privacy Policy",
+          "url": "/privacy-policy"
+        },
+        {
+          "title": "Terms of Service",
+          "url": "/terms-of-service"
+        }
+      ]
+    },
+    "show_theme": false,
+    "show_locale": true,
+    "show_built_with": false
+  },
+  "aitalk": {
+    "hero": {
+      "eyebrow": "AI speaking coach for daily practice",
+      "title": "Speak better every day.",
+      "description": "Practice real conversations, get instant feedback, and keep web and app progress in one account.",
+      "primaryCta": "Start practicing",
+      "secondaryCta": "View lessons",
+      "panel": {
+        "teacher": "Mia, conversation coach",
+        "sessionType": "Travel English lesson",
+        "prompt": "Answer naturally: How would you change the booking?",
+        "transcript": "I would like to move my reservation to Friday evening if there is still a table available.",
+        "scoreLabel": "Fluency",
+        "score": "86",
+        "feedbackTitle": "Coach feedback",
+        "feedback": "Clear intent and natural phrasing. Try linking the last clause with a softer rising tone.",
+        "chips": ["Pronunciation", "Vocabulary", "TTS replay"]
+      }
+    },
+    "stats": [
+      {
+        "value": "1 account",
+        "label": "Shared Supabase login for web and app"
+      },
+      {
+        "value": "Daily",
+        "label": "Short speaking sessions that fit your schedule"
+      },
+      {
+        "value": "Text + voice",
+        "label": "Practice by typing, speaking, listening and replaying"
+      },
+      {
+        "value": "Progress",
+        "label": "Lessons, plans and collections stay in sync"
+      }
+    ],
+    "features": {
+      "title": "Everything needed for the speaking loop.",
+      "description": "AITalk turns lessons into short practice sessions with prompts, voice input, AI feedback and audio playback.",
+      "cards": [
+        {
+          "title": "Browser voice practice",
+          "text": "Use microphone transcription when the browser supports it, with a text fallback when permission is denied."
+        },
+        {
+          "title": "AI coach feedback",
+          "text": "Get corrections for meaning, phrasing, pronunciation focus and next sentence suggestions."
+        },
+        {
+          "title": "Course based learning",
+          "text": "Continue structured plans, lesson steps and progress from the same data used by the mobile app."
+        },
+        {
+          "title": "Listen and repeat",
+          "text": "Replay model speech with TTS so learners can shadow sentences before answering again."
+        }
+      ]
+    },
+    "workflow": {
+      "title": "A lesson flow that keeps learners moving.",
+      "description": "Pick a level, follow the current plan, speak or type an answer, then improve from targeted feedback.",
+      "items": [
+        {
+          "title": "Set your learning profile",
+          "text": "Choose native language, target language, level, goals, daily minutes and nickname during onboarding."
+        },
+        {
+          "title": "Practice the next step",
+          "text": "Open the active lesson, answer prompts, review vocabulary and complete steps in order."
+        },
+        {
+          "title": "Track what changed",
+          "text": "Finished lessons, collections and learning time are saved to the same Supabase user data."
+        }
+      ]
+    },
+    "sync": {
+      "title": "Same user system as the AITalk app.",
+      "description": "Web sign in uses Supabase Auth directly, so Google and Apple accounts map to the existing app user id.",
+      "bullets": [
+        "Google and Apple OAuth run through the same Supabase project.",
+        "Profiles, learning plans, lesson progress and collections use auth.users.id.",
+        "No service role key is shipped to the client bundle."
+      ],
+      "providers": ["Google", "Apple ID", "Supabase Auth"]
+    },
+    "cta": {
+      "title": "Start with one short speaking session.",
+      "description": "Sign in, finish onboarding, and continue the same learning plan from web or mobile.",
+      "primaryCta": "Start practicing",
+      "secondaryCta": "Open app"
+    }
+  }
+}

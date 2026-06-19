@@ -1,0 +1,14 @@
+name = "siterise"
+main = "cloudflare-alpha/worker.js"
+compatibility_date = "2026-06-11"
+
+[observability]
+enabled = true
+
+[vars]
+NEXT_PUBLIC_APP_URL = "https://siterise.openapiproxy.workers.dev"
+NEXT_PUBLIC_APP_NAME = "SiteRise"
+NEXT_PUBLIC_APP_DESCRIPTION = "Website opportunity intelligence for finding fast-growing domains and competitor movement."
+SEMRUSH_TRENDS_BASE_URL = "https://api.semrush.com/analytics/ta/api/v3"
+SEMRUSH_CACHE_TTL_DAYS = "30"
+SEMRUSH_MAX_RPS = "10"

@@ -1,0 +1,45 @@
+{
+  "metadata": {
+    "title": "网站增长榜单 | SiteRise",
+    "description": "发现快速增长的网站和新注册域名，查看月度流量趋势、增长信号和分类筛选。",
+    "keywords": "网站增长榜单, 增长网站, 新站排行榜, 流量排名, 域名增长"
+  },
+  "page": {
+    "title": "网站增长榜单",
+    "description": "用真实月度流量历史发现快速增长的网站和早期新站。",
+    "tabs": {
+      "growth": "增长最快",
+      "new": "新站排行"
+    },
+    "filters": {
+      "category": "分类",
+      "categoryPlaceholder": "全部分类",
+      "country": "国家",
+      "countryPlaceholder": "全球",
+      "range": "新站时间",
+      "range30": "30 天",
+      "range60": "60 天",
+      "range90": "90 天",
+      "limit": "行数"
+    },
+    "columns": {
+      "rank": "排名",
+      "domain": "域名",
+      "category": "分类",
+      "visits": "访问量",
+      "growth": "增长",
+      "signal": "信号",
+      "registered": "注册时间",
+      "trend": "趋势"
+    },
+    "empty": {
+      "title": "还没有榜单数据",
+      "description": "先导入种子域名、刷新流量，然后生成榜单即可填充这个页面。",
+      "command": "pnpm siterise:build-leaderboards"
+    },
+    "previewNotice": "公开预览展示前 20 行，登录后可查看更多。",
+    "signin": "登录",
+    "updated": "生成时间",
+    "viewDomain": "查看域名"
+  }
+}

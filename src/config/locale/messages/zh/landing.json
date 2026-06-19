@@ -1,0 +1,255 @@
+{
+  "header": {
+    "id": "header",
+    "brand": {
+      "title": "AITalk",
+      "logo": {
+        "src": "/logo.png",
+        "alt": "AITalk"
+      },
+      "url": "/"
+    },
+    "nav": {
+      "items": [
+        {
+          "title": "功能",
+          "url": "/#features",
+          "icon": "Sparkles"
+        },
+        {
+          "title": "练习",
+          "url": "/#practice",
+          "icon": "Mic"
+        },
+        {
+          "title": "账号打通",
+          "url": "/#sync",
+          "icon": "ShieldCheck"
+        },
+        {
+          "title": "课程",
+          "url": "/lessons",
+          "icon": "BookOpenCheck"
+        }
+      ]
+    },
+    "buttons": [
+      {
+        "title": "开始练习",
+        "url": "/login",
+        "icon": "ArrowRight"
+      }
+    ],
+    "user_nav": {
+      "show_name": true,
+      "show_credits": false,
+      "show_sign_out": true,
+      "items": [
+        {
+          "title": "学习首页",
+          "url": "/app",
+          "icon": "LayoutDashboard"
+        },
+        {
+          "title": "个人中心",
+          "url": "/me",
+          "icon": "User"
+        }
+      ]
+    },
+    "show_sign": false,
+    "show_theme": false,
+    "show_locale": true,
+    "topbanner": {}
+  },
+  "footer": {
+    "id": "footer",
+    "brand": {
+      "title": "AITalk",
+      "logo": {
+        "src": "/logo.png",
+        "alt": "AITalk"
+      },
+      "description": "面向语言学习者的 AI 口语练习网站。Web 和 App 使用同一个 Supabase 账号与学习进度。",
+      "url": "/"
+    },
+    "nav": {
+      "items": [
+        {
+          "title": "产品",
+          "children": [
+            {
+              "title": "功能",
+              "url": "/#features",
+              "target": "_self"
+            },
+            {
+              "title": "练习流程",
+              "url": "/#practice",
+              "target": "_self"
+            },
+            {
+              "title": "账号打通",
+              "url": "/#sync",
+              "target": "_self"
+            }
+          ]
+        },
+        {
+          "title": "学习",
+          "children": [
+            {
+              "title": "课程",
+              "url": "/lessons",
+              "target": "_self"
+            },
+            {
+              "title": "快速练习",
+              "url": "/practice",
+              "target": "_self"
+            },
+            {
+              "title": "学习首页",
+              "url": "/app",
+              "target": "_self"
+            }
+          ]
+        },
+        {
+          "title": "账号",
+          "children": [
+            {
+              "title": "登录",
+              "url": "/login",
+              "target": "_self"
+            },
+            {
+              "title": "个人中心",
+              "url": "/me",
+              "target": "_self"
+            }
+          ]
+        }
+      ]
+    },
+    "social": {
+      "items": [
+        {
+          "title": "邮箱",
+          "icon": "Mail",
+          "url": "mailto:support@aitalk.app",
+          "target": "_self"
+        }
+      ]
+    },
+    "agreement": {
+      "items": [
+        {
+          "title": "隐私政策",
+          "url": "/privacy-policy"
+        },
+        {
+          "title": "服务条款",
+          "url": "/terms-of-service"
+        }
+      ]
+    },
+    "show_theme": false,
+    "show_locale": true,
+    "show_built_with": false
+  },
+  "aitalk": {
+    "hero": {
+      "eyebrow": "每天都能练的 AI 口语教练",
+      "title": "把口语练成习惯。",
+      "description": "练真实对话，获得即时反馈，并让 Web 与 App 共享同一个账号和学习进度。",
+      "primaryCta": "开始练习",
+      "secondaryCta": "查看课程",
+      "panel": {
+        "teacher": "Mia，对话教练",
+        "sessionType": "旅行英语课程",
+        "prompt": "自然回答：你会怎样修改预订？",
+        "transcript": "I would like to move my reservation to Friday evening if there is still a table available.",
+        "scoreLabel": "流利度",
+        "score": "86",
+        "feedbackTitle": "教练反馈",
+        "feedback": "表达意图清楚，句子也自然。最后半句可以用更柔和的升调连接。",
+        "chips": ["发音", "词汇", "TTS 跟读"]
+      }
+    },
+    "stats": [
+      {
+        "value": "1 个账号",
+        "label": "Web 和 App 共用 Supabase 登录"
+      },
+      {
+        "value": "每天",
+        "label": "短时口语练习，适合日常坚持"
+      },
+      {
+        "value": "文本 + 语音",
+        "label": "输入、开口、听音频、再跟读"
+      },
+      {
+        "value": "进度同步",
+        "label": "课程、计划和收藏保持一致"
+      }
+    ],
+    "features": {
+      "title": "完成口语练习闭环所需的一切。",
+      "description": "AITalk 把课程变成短练习：提示、语音输入、AI 反馈和音频播放都在一个流程里。",
+      "cards": [
+        {
+          "title": "浏览器语音练习",
+          "text": "浏览器支持时使用麦克风转写；拒绝权限或不支持时自动回到文本练习。"
+        },
+        {
+          "title": "AI 教练反馈",
+          "text": "围绕意思、表达、发音重点和下一句建议给出可执行的修改。"
+        },
+        {
+          "title": "按课程推进",
+          "text": "继续使用移动端同一套学习计划、课程步骤和完成进度。"
+        },
+        {
+          "title": "听音频再跟读",
+          "text": "用 TTS 播放示范语音，先跟读句子，再开口回答。"
+        }
+      ]
+    },
+    "workflow": {
+      "title": "让学习者持续推进的课程流程。",
+      "description": "选择等级，进入当前计划，开口或输入回答，再根据反馈继续改进。",
+      "items": [
+        {
+          "title": "建立学习资料",
+          "text": "Onboarding 中设置母语、目标语言、等级、目标、每日分钟和昵称。"
+        },
+        {
+          "title": "练当前课程",
+          "text": "打开 active lesson，按提示回答、复习词汇，并按顺序完成步骤。"
+        },
+        {
+          "title": "保存变化",
+          "text": "已完成课程、收藏和学习时长都会写入同一个 Supabase 用户数据。"
+        }
+      ]
+    },
+    "sync": {
+      "title": "和 AITalk App 共用同一套用户体系。",
+      "description": "Web 登录直接使用 Supabase Auth，所以 Google 和 Apple 账号会映射到 App 已有 user id。",
+      "bullets": [
+        "Google 和 Apple OAuth 使用同一个 Supabase 项目。",
+        "Profile、学习计划、课程进度和收藏都使用 auth.users.id。",
+        "service role key 不会进入客户端 bundle。"
+      ],
+      "providers": ["Google", "Apple ID", "Supabase Auth"]
+    },
+    "cta": {
+      "title": "从一次短口语练习开始。",
+      "description": "登录、完成 onboarding，然后在 Web 或移动端继续同一个学习计划。",
+      "primaryCta": "开始练习",
+      "secondaryCta": "打开应用"
+    }
+  }
+}

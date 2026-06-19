@@ -1,0 +1,45 @@
+{
+  "metadata": {
+    "title": "Website Growth Leaderboards | SiteRise",
+    "description": "Discover fast-growing websites and newly launched domains with monthly traffic trends, growth signals, and category filters.",
+    "keywords": "website growth leaderboard, trending websites, new websites, traffic ranking, domain growth"
+  },
+  "page": {
+    "title": "Website growth leaderboards",
+    "description": "Find fast-growing domains and young websites with real monthly traffic history.",
+    "tabs": {
+      "growth": "Fastest Growing",
+      "new": "New Websites"
+    },
+    "filters": {
+      "category": "Category",
+      "categoryPlaceholder": "All categories",
+      "country": "Country",
+      "countryPlaceholder": "Global",
+      "range": "New site age",
+      "range30": "30 days",
+      "range60": "60 days",
+      "range90": "90 days",
+      "limit": "Rows"
+    },
+    "columns": {
+      "rank": "Rank",
+      "domain": "Domain",
+      "category": "Category",
+      "visits": "Visits",
+      "growth": "Growth",
+      "signal": "Signal",
+      "registered": "Registered",
+      "trend": "Trend"
+    },
+    "empty": {
+      "title": "No leaderboard data yet",
+      "description": "Import seed domains, refresh traffic, then build leaderboards to populate this page.",
+      "command": "pnpm siterise:build-leaderboards"
+    },
+    "previewNotice": "Public preview shows the top 20 rows. Sign in to view more.",
+    "signin": "Sign in",
+    "updated": "Generated",
+    "viewDomain": "View domain"
+  }
+}

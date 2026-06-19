@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-labelledby="siterise-favicon-title">
+  <title id="siterise-favicon-title">SiteRise</title>
+  <defs>
+    <linearGradient id="siterise-favicon-surface" x1="188" y1="116" x2="836" y2="908" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#1b1f1b"/>
+      <stop offset="1" stop-color="#0f1110"/>
+    </linearGradient>
+    <linearGradient id="siterise-favicon-accent" x1="236" y1="704" x2="814" y2="224" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0f7a4f"/>
+      <stop offset="1" stop-color="#18c985"/>
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" rx="220" fill="url(#siterise-favicon-surface)"/>
+  <path d="M254 314c0-37 30-67 67-67h382c37 0 67 30 67 67v396c0 37-30 67-67 67H321c-37 0-67-30-67-67V314Z" fill="#fbfcfa" opacity=".08"/>
+  <rect x="258" y="596" width="116" height="210" rx="40" fill="#fbfcfa" opacity=".9"/>
+  <rect x="454" y="500" width="116" height="306" rx="40" fill="#fbfcfa" opacity=".9"/>
+  <rect x="650" y="360" width="116" height="446" rx="40" fill="#fbfcfa" opacity=".9"/>
+  <path d="M248 650c86-86 173-57 257-145 64-67 94-118 151-151 48-28 88-55 150-115" fill="none" stroke="url(#siterise-favicon-accent)" stroke-width="82" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M706 238h101v101" fill="none" stroke="#18c985" stroke-width="82" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

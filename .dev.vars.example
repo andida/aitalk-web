@@ -1,0 +1,13 @@
+AUTH_SECRET=""
+CLOUDFLARE_EMAIL_ENABLED="true"
+CLOUDFLARE_EMAIL_BINDING="EMAIL"
+CLOUDFLARE_EMAIL_SENDER="SiteRise <no-reply@email.siterisehq.com>"
+EMAIL_VERIFICATION_ENABLED="true"
+QUERY_DOMAINS_API_KEY=""
+QUERY_DOMAINS_CHECK_URL="https://api.query.domains/api/v1/check"
+QUERY_DOMAINS_TRAFFIC_BASE_URL="https://api.query.domains/api/v1/traffic"
+QUERY_DOMAINS_WHOIS_URL="https://api.query.domains/api/v1/whois"
+QUERY_DOMAINS_CACHE_TTL_DAYS="30"
+
+# seed discovery import
+SEMRUSH_API_KEY=""

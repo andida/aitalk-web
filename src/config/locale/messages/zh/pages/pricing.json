@@ -1,0 +1,116 @@
+{
+  "metadata": {
+    "title": "SiteRise 价格 | 网站流量情报套餐",
+    "description": "选择 SiteRise 套餐，解锁流量查询、增长榜单、竞品监控、提醒和导出。",
+    "keywords": "SiteRise 价格, 网站流量情报套餐, 网站流量分析价格, 竞品监控套餐"
+  },
+  "page": {
+    "title": "SiteRise 价格",
+    "sections": {
+      "pricing": {
+        "id": "pricing",
+        "title": "围绕持续发现网站机会来设计套餐",
+        "description": "从流量查询开始，随着工作流增长解锁榜单、监控、提醒、导出和垂直行业情报。",
+        "groups": [
+          {
+            "name": "monthly",
+            "title": "按月"
+          }
+        ],
+        "items": [
+          {
+            "title": "Free",
+            "description": "适合快速查询和早期验证。",
+            "features_title": "包含",
+            "features": [
+              "每天 5 次流量查询",
+              "批量对比最多 10 个域名",
+              "5 个监控域名"
+            ],
+            "interval": "month",
+            "amount": 0,
+            "currency": "USD",
+            "price": "$0",
+            "unit": "",
+            "is_featured": false,
+            "tip": "先验证工作流，再升级套餐。",
+            "button": {
+              "title": "免费开始",
+              "url": "/sign-up",
+              "icon": "RiFlashlightFill"
+            },
+            "product_id": "free",
+            "product_name": "SiteRise Free",
+            "credits": 0,
+            "valid_days": 30,
+            "group": "monthly",
+            "plan_name": "Free"
+          },
+          {
+            "title": "Pro",
+            "description": "适合创始人、SEO 运营和独立开发者。",
+            "label": "推荐",
+            "features_title": "包含 Free 的全部功能，此外",
+            "features": [
+              "每月 200 次流量查询",
+              "完整增长网站榜单",
+              "100 个监控域名",
+              "支持 CSV 导出"
+            ],
+            "interval": "month",
+            "amount": 3900,
+            "currency": "USD",
+            "price": "$39",
+            "unit": "/ 月",
+            "is_featured": true,
+            "tip": "适合持续寻找网站机会。",
+            "button": {
+              "title": "解锁 Pro",
+              "url": "/sign-up",
+              "icon": "RiFlashlightFill"
+            },
+            "product_id": "pro-monthly",
+            "product_name": "SiteRise Pro Monthly",
+            "credits": 200,
+            "valid_days": 30,
+            "group": "monthly",
+            "plan_name": "Pro"
+          },
+          {
+            "title": "Growth",
+            "description": "适合每月监控市场和竞品的团队。",
+            "features_title": "包含 Pro 的全部功能，此外",
+            "features": [
+              "每月 1,000 次流量查询",
+              "垂直行业增长榜单",
+              "提醒和保存报告",
+              "500 个监控域名"
+            ],
+            "interval": "month",
+            "amount": 12900,
+            "currency": "USD",
+            "price": "$129",
+            "unit": "/ 月",
+            "is_featured": false,
+            "tip": "为持续市场监控而设计。",
+            "button": {
+              "title": "解锁 Growth",
+              "url": "/sign-up",
+              "icon": "RiFlashlightFill"
+            },
+            "product_id": "growth-monthly",
+            "product_name": "SiteRise Growth Monthly",
+            "credits": 1000,
+            "valid_days": 30,
+            "group": "monthly",
+            "plan_name": "Growth"
+          }
+        ]
+      }
+    }
+  },
+  "messages": {
+    "current_plan": "当前方案",
+    "processing": "处理中"
+  }
+}
