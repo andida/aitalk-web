@@ -41,7 +41,7 @@ export const envConfigs: ConfigMap = {
     'https://jkdhpfscpoahowolprco.supabase.co',
   supabase_anon_key:
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ??
-    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJqa2RocGZzY3BvYWhvd29scHJjbyIsInJvbGUiOiJhbm9uIiwiaWF0IjoxNjg4MzQxNzU0LCJleHAiOjIwMDM5MTc3NTR9.cMmgh_NJX4A5TT7i33FHufTn1UKao8tIM9HaREDnK-o',
+    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImprZGhwZnNjcG9haG93b2xwcmNvIiwicm9sZSI6ImFub24iLCJpYXQiOjE2ODgzNDE3NTQsImV4cCI6MjAwMzkxNzc1NH0.cMmgh_NJX4A5TT7i33FHufTn1UKao8tIM9HaREDnK-o',
   version: packageJson.version,
   locale_detect_enabled:
     process.env.NEXT_PUBLIC_LOCALE_DETECT_ENABLED ?? 'false',
