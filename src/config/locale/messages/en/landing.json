@@ -70,7 +70,7 @@
         "src": "/logo.svg",
         "alt": "AITalk"
       },
-      "description": "AI speaking practice for language learners. Web and app use the same Supabase account and learning progress.",
+      "description": "Master a new language with advanced AI tutors. Speak out, get instant feedback, and keep progress synced across web and app.",
       "url": "/"
     },
     "nav": {
@@ -82,6 +82,11 @@
               "title": "Features",
               "url": "/#features",
               "target": "_self"
+            },
+            {
+              "title": "iOS App",
+              "url": "https://apps.apple.com/us/app/aitalk-ai-language-tutor/id6463466290",
+              "target": "_blank"
             },
             {
               "title": "Practice flow",
@@ -137,7 +142,7 @@
         {
           "title": "Email",
           "icon": "Mail",
-          "url": "mailto:support@aitalk.app",
+          "url": "mailto:support@aitalk.im",
           "target": "_self"
         }
       ]
@@ -146,11 +151,13 @@
       "items": [
         {
           "title": "Privacy Policy",
-          "url": "/privacy-policy"
+          "url": "https://protocol.aitalk.im/privacy",
+          "target": "_blank"
         },
         {
           "title": "Terms of Service",
-          "url": "/terms-of-service"
+          "url": "https://protocol.aitalk.im/termofuse",
+          "target": "_blank"
         }
       ]
     },
@@ -160,9 +167,9 @@
   },
   "aitalk": {
     "hero": {
-      "eyebrow": "AI speaking coach for daily practice",
-      "title": "Speak better every day.",
-      "description": "Practice real conversations, get instant feedback, and keep web and app progress in one account.",
+      "eyebrow": "AI tutors for speaking practice",
+      "title": "Learn languages by speaking.",
+      "description": "Practice real conversations anytime, get instant feedback, and fast-track your path to fluency.",
       "primaryCta": "Start practicing",
       "secondaryCta": "View lessons",
       "panel": {
@@ -180,45 +187,45 @@
     "stats": [
       {
         "value": "1 account",
-        "label": "Shared Supabase login for web and app"
+        "label": "One login for the web experience and iOS app"
       },
       {
         "value": "Daily",
-        "label": "Short speaking sessions that fit your schedule"
+        "label": "Speak anytime, anywhere with AI tutors"
       },
       {
-        "value": "Text + voice",
-        "label": "Practice by typing, speaking, listening and replaying"
+        "value": "10+ languages",
+        "label": "Practice across supported languages and topics"
       },
       {
-        "value": "Progress",
-        "label": "Lessons, plans and collections stay in sync"
+        "value": "100+ tutors",
+        "label": "Choose characters and coaches for different goals"
       }
     ],
     "features": {
-      "title": "Everything needed for the speaking loop.",
-      "description": "AITalk turns lessons into short practice sessions with prompts, voice input, AI feedback and audio playback.",
+      "title": "Master language with speaking.",
+      "description": "AITalk turns practice into natural conversations with prompts, voice input, AI feedback and audio playback.",
       "cards": [
         {
-          "title": "Browser voice practice",
-          "text": "Use microphone transcription when the browser supports it, with a text fallback when permission is denied."
+          "title": "Speak freely",
+          "text": "Talk about real topics and practice confidently without fear of making mistakes."
         },
         {
-          "title": "AI coach feedback",
+          "title": "Instant AI feedback",
           "text": "Get corrections for meaning, phrasing, pronunciation focus and next sentence suggestions."
         },
         {
-          "title": "Course based learning",
-          "text": "Continue structured plans, lesson steps and progress from the same data used by the mobile app."
+          "title": "IELTS and daily goals",
+          "text": "Use structured practice for IELTS speaking, travel, work and everyday conversation."
         },
         {
           "title": "Listen and repeat",
-          "text": "Replay model speech with TTS so learners can shadow sentences before answering again."
+          "text": "Replay model speech with TTS, shadow the sentence, then answer again with more confidence."
         }
       ]
     },
     "workflow": {
-      "title": "A lesson flow that keeps learners moving.",
+      "title": "A practice flow that keeps learners speaking.",
       "description": "Pick a level, follow the current plan, speak or type an answer, then improve from targeted feedback.",
       "items": [
         {
@@ -227,11 +234,11 @@
         },
         {
           "title": "Practice the next step",
-          "text": "Open the active lesson, answer prompts, review vocabulary and complete steps in order."
+          "text": "Open the active lesson, answer prompts, review vocabulary and complete speaking steps in order."
         },
         {
           "title": "Track what changed",
-          "text": "Finished lessons, collections and learning time are saved to the same Supabase user data."
+          "text": "Finished lessons, collections and learning time are saved to the same account data."
         }
       ]
     },
@@ -246,8 +253,8 @@
       "providers": ["Google", "Apple ID", "Supabase Auth"]
     },
     "cta": {
-      "title": "Start with one short speaking session.",
-      "description": "Sign in, finish onboarding, and continue the same learning plan from web or mobile.",
+      "title": "Speak with AI tutors today.",
+      "description": "Sign in, finish onboarding, and continue the same learning plan from web or the iOS app.",
       "primaryCta": "Start practicing",
       "secondaryCta": "Open app"
     }
