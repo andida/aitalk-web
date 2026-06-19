@@ -1,10 +1,10 @@
 import { redirect } from 'next/navigation';
-
 import {
   getActiveLearningPlan,
   getLessonById,
   getProfile,
   getProfileCompleteness,
+  getTeachers,
 } from '@/features/aitalk/data';
 import { withLocale } from '@/features/aitalk/lib/paths';
 import { createAitalkServerClient } from '@/features/aitalk/supabase/server';
@@ -27,11 +27,15 @@ export default async function PracticePage({
   }
 
   const lessonId = lessonParam ? Number.parseInt(lessonParam, 10) : null;
-  const activePlan = await getActiveLearningPlan(supabase).catch(() => null);
+  const [activePlan, teachers] = await Promise.all([
+    getActiveLearningPlan(supabase).catch(() => null),
+    getTeachers(supabase, profile?.learn_language || undefined).catch(() => []),
+  ]);
   const lesson =
     lessonId && Number.isFinite(lessonId)
       ? await getLessonById(supabase, lessonId)
-      : activePlan?.lesson ?? null;
+      : (activePlan?.lesson ?? null);
+  const teacher = teachers[0] ?? null;
 
   return (
     <AitalkAppShell active="/practice">
@@ -39,6 +43,8 @@ export default async function PracticePage({
         lesson={lesson}
         locale={locale}
         speechLocale={profile?.learn_language_code || 'en-US'}
+        speechStyle={teacher?.style || 'friendly'}
+        voiceName={teacher?.voice_name || teacher?.voiceName || undefined}
       />
     </AitalkAppShell>
   );

@@ -1,11 +1,4 @@
-import {
-  BookOpen,
-  Compass,
-  GraduationCap,
-  Home,
-  MessageCircle,
-  Settings,
-} from 'lucide-react';
+import { BookOpen, Compass, Home, MessageCircle, Settings } from 'lucide-react';
 
 import { Link } from '@/core/i18n/navigation';
 import { Button } from '@/shared/components/ui/button';
@@ -30,9 +23,11 @@ export function AitalkAppShell({
     <div className="min-h-[100dvh] bg-[#f6fbf8] text-zinc-950 dark:bg-zinc-950 dark:text-zinc-50">
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-72 border-r border-emerald-950/10 bg-white/90 px-5 py-5 backdrop-blur md:flex md:flex-col dark:border-white/10 dark:bg-zinc-950/90">
         <Link href="/app" className="flex items-center gap-3">
-          <div className="flex size-11 items-center justify-center rounded-2xl bg-emerald-500 text-white">
-            <GraduationCap className="size-6" />
-          </div>
+          <img
+            src="/logo.svg"
+            alt=""
+            className="size-11 rounded-2xl object-contain shadow-sm"
+          />
           <div>
             <div className="text-lg font-black tracking-tight">AITalk</div>
             <div className="text-xs font-medium text-zinc-500 dark:text-zinc-400">

@@ -1,15 +1,15 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState, useTransition } from 'react';
+import { askTutorAction } from '@/features/aitalk/actions';
 import { Loader2, Mic, MicOff, Send, Volume2 } from 'lucide-react';
 
-import { askTutorAction } from '@/features/aitalk/actions';
 import { Button } from '@/shared/components/ui/button';
 import { Textarea } from '@/shared/components/ui/textarea';
 import { cn } from '@/shared/lib/utils';
 
-import type { LessonListDetail, PracticeMessage } from '../types';
 import { displayLessonTitle } from '../data';
+import type { LessonListDetail, PracticeMessage } from '../types';
 
 type AitalkSpeechRecognitionConstructor = new () => AitalkSpeechRecognition;
 
@@ -32,7 +32,9 @@ function resolveSpeechRecognition() {
       webkitSpeechRecognition?: AitalkSpeechRecognitionConstructor;
     };
   return (
-    speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition || null
+    speechWindow.SpeechRecognition ||
+    speechWindow.webkitSpeechRecognition ||
+    null
   );
 }
 
@@ -40,10 +42,14 @@ export function PracticeClient({
   lesson,
   locale,
   speechLocale,
+  speechStyle,
+  voiceName,
 }: {
   lesson: LessonListDetail | null;
   locale: string;
   speechLocale: string;
+  speechStyle?: string;
+  voiceName?: string;
 }) {
   const [messages, setMessages] = useState<PracticeMessage[]>([
     {
@@ -56,13 +62,23 @@ export function PracticeClient({
   const [listening, setListening] = useState(false);
   const [speechSupported, setSpeechSupported] = useState(true);
   const [error, setError] = useState('');
+  const [speakingMessageIndex, setSpeakingMessageIndex] = useState<
+    number | null
+  >(null);
   const [pending, startTransition] = useTransition();
   const recognitionRef = useRef<AitalkSpeechRecognition | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   const title = useMemo(() => displayLessonTitle(lesson), [lesson]);
 
   useEffect(() => {
     setSpeechSupported(Boolean(resolveSpeechRecognition()));
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      audioRef.current?.pause();
+    };
   }, []);
 
   function startListening() {
@@ -101,12 +117,54 @@ export function PracticeClient({
     setListening(false);
   }
 
-  function speak(value: string) {
-    if (!('speechSynthesis' in window)) return;
-    window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(value);
-    utterance.lang = speechLocale || 'en-US';
-    window.speechSynthesis.speak(utterance);
+  async function speak(value: string, messageIndex: number) {
+    const nextText = value.trim();
+    if (!nextText || speakingMessageIndex !== null) return;
+
+    audioRef.current?.pause();
+    audioRef.current = null;
+    setError('');
+    setSpeakingMessageIndex(messageIndex);
+
+    let audioUrl = '';
+    try {
+      const response = await fetch('/api/aitalk/text-speech', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          text: nextText,
+          lang: speechLocale || 'en-US',
+          name: voiceName,
+          style: speechStyle || 'friendly',
+        }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => null);
+        throw new Error(data?.error || 'Text-to-speech failed.');
+      }
+
+      const audioBlob = await response.blob();
+      audioUrl = URL.createObjectURL(audioBlob);
+      const audio = new Audio(audioUrl);
+      audioRef.current = audio;
+      audio.onended = () => {
+        setSpeakingMessageIndex(null);
+        URL.revokeObjectURL(audioUrl);
+      };
+      audio.onerror = () => {
+        setSpeakingMessageIndex(null);
+        URL.revokeObjectURL(audioUrl);
+        setError('Audio playback failed.');
+      };
+      await audio.play();
+    } catch (error: any) {
+      if (audioUrl) URL.revokeObjectURL(audioUrl);
+      setSpeakingMessageIndex(null);
+      setError(error?.message || 'Text-to-speech failed.');
+    }
   }
 
   function submit() {
@@ -176,11 +234,16 @@ export function PracticeClient({
               {message.role === 'assistant' ? (
                 <button
                   type="button"
-                  onClick={() => speak(message.content)}
+                  onClick={() => speak(message.content, index)}
+                  disabled={speakingMessageIndex !== null}
                   className="mt-2 inline-flex items-center gap-1 text-xs font-bold text-emerald-700 dark:text-emerald-300"
                 >
-                  <Volume2 className="size-3.5" />
-                  Play
+                  {speakingMessageIndex === index ? (
+                    <Loader2 className="size-3.5 animate-spin" />
+                  ) : (
+                    <Volume2 className="size-3.5" />
+                  )}
+                  {speakingMessageIndex === index ? 'Loading' : 'Play'}
                 </button>
               ) : null}
             </div>
@@ -226,7 +289,11 @@ export function PracticeClient({
             className="size-12 rounded-2xl"
             onClick={listening ? stopListening : startListening}
           >
-            {listening ? <MicOff className="size-5" /> : <Mic className="size-5" />}
+            {listening ? (
+              <MicOff className="size-5" />
+            ) : (
+              <Mic className="size-5" />
+            )}
           </Button>
           <Button
             type="button"
