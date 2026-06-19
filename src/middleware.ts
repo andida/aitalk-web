@@ -1,8 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSessionCookie } from 'better-auth/cookies';
-import createIntlMiddleware from 'next-intl/middleware';
-
-import { routing } from '@/core/i18n/config';
 import {
   getLocaleFromPath,
   isAitalkAuthPath,
@@ -11,8 +7,18 @@ import {
   withLocale,
 } from '@/features/aitalk/lib/paths';
 import { updateAitalkSession } from '@/features/aitalk/supabase/middleware';
+import { getSessionCookie } from 'better-auth/cookies';
+import createIntlMiddleware from 'next-intl/middleware';
+
+import { routing } from '@/core/i18n/config';
 
 const intlMiddleware = createIntlMiddleware(routing);
+
+function isSupabaseOAuthError(request: NextRequest) {
+  const error = request.nextUrl.searchParams.get('error');
+  const errorCode = request.nextUrl.searchParams.get('error_code');
+  return Boolean(error && errorCode);
+}
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -24,6 +30,19 @@ export async function middleware(request: NextRequest) {
   const locale = pathname.split('/')[1];
   const isValidLocale = routing.locales.includes(locale as any);
   const pathWithoutLocale = stripLocale(pathname);
+
+  if (pathWithoutLocale === '/' && isSupabaseOAuthError(request)) {
+    const signInUrl = new URL(
+      withLocale('/login', getLocaleFromPath(pathname)),
+      request.url
+    );
+    signInUrl.searchParams.set('redirect', '/app');
+    signInUrl.searchParams.set(
+      'error',
+      request.nextUrl.searchParams.get('error_code') || 'oauth_error'
+    );
+    return NextResponse.redirect(signInUrl);
+  }
 
   if (
     isAitalkProtectedPath(pathWithoutLocale) ||

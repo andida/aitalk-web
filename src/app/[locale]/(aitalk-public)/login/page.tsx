@@ -28,6 +28,7 @@ const loginCopy = {
     secureDescription:
       '登录完成后会回到 Web，并使用同一个 user id 读取学习数据。',
     error: '登录没有完成，请重新选择 Google 或 Apple。',
+    expiredError: '登录请求已过期，请重新点击 Google 继续。',
     legalPrefix: '继续即表示你同意 AITalk 的',
     privacy: '隐私政策',
     terms: '服务条款',
@@ -53,6 +54,7 @@ const loginCopy = {
     secureDescription:
       'After sign in, Web uses the same user id to read your learning data.',
     error: 'Sign-in was not completed. Please try Google or Apple again.',
+    expiredError: 'The sign-in request expired. Please click Google again.',
     legalPrefix: 'By continuing, you agree to AITalk',
     privacy: 'Privacy Policy',
     terms: 'Terms of Service',
@@ -94,6 +96,8 @@ export default async function AitalkLoginPage({
   }
 
   const copy = locale === 'zh' ? loginCopy.zh : loginCopy.en;
+  const errorMessage =
+    error === 'bad_oauth_state' ? copy.expiredError : copy.error;
 
   return (
     <main className="min-h-[100dvh] bg-[#f7f8f4] text-zinc-950 antialiased dark:bg-zinc-950 dark:text-zinc-50">
@@ -177,7 +181,7 @@ export default async function AitalkLoginPage({
 
             {error ? (
               <p className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm leading-6 text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-200">
-                {copy.error}
+                {errorMessage}
               </p>
             ) : null}
 
