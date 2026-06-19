@@ -111,8 +111,8 @@ export default async function LocaleLayout({
       suppressHydrationWarning
     >
       <head>
-        <link rel="icon" href={envConfigs.app_favicon} />
-        <link rel="alternate icon" href="/favicon.svg" />
+        <link rel="icon" href={envConfigs.app_favicon} type="image/svg+xml" />
+        <link rel="alternate icon" href="/favicon.ico" sizes="any" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
         {adsMetaTags}
