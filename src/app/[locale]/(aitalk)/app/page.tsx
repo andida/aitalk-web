@@ -111,7 +111,7 @@ export default async function AitalkAppPage({
                       className="flex items-center gap-3 rounded-2xl bg-emerald-50 p-3 dark:bg-white/10"
                     >
                       <img
-                        src={teacher.avatar_url || teacher.avatarUrl || '/logo.png'}
+                        src={teacher.avatar_url || teacher.avatarUrl || '/logo.svg'}
                         alt={teacher.name}
                         className="size-12 rounded-full object-cover"
                       />

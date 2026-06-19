@@ -3,7 +3,7 @@
     "brand": {
       "title": "ShipAny Two",
       "logo": {
-        "src": "/logo.png",
+        "src": "/logo.svg",
         "alt": "ShipAny Two"
       },
       "url": "/admin"

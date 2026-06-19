@@ -54,7 +54,7 @@ export default async function ExplorePage({
                 <CardContent className="px-5">
                   <div className="flex items-center gap-4">
                     <img
-                      src={teacher.avatar_url || teacher.avatarUrl || '/logo.png'}
+                      src={teacher.avatar_url || teacher.avatarUrl || '/logo.svg'}
                       alt={teacher.name}
                       className="size-16 rounded-full object-cover"
                     />

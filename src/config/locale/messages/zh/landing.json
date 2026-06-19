@@ -4,7 +4,7 @@
     "brand": {
       "title": "AITalk",
       "logo": {
-        "src": "/logo.png",
+        "src": "/logo.svg",
         "alt": "AITalk"
       },
       "url": "/"
@@ -67,7 +67,7 @@
     "brand": {
       "title": "AITalk",
       "logo": {
-        "src": "/logo.png",
+        "src": "/logo.svg",
         "alt": "AITalk"
       },
       "description": "面向语言学习者的 AI 口语练习网站。Web 和 App 使用同一个 Supabase 账号与学习进度。",
