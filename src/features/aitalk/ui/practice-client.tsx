@@ -2,6 +2,15 @@
 
 import { useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import { askTutorAction } from '@/features/aitalk/actions';
+import { SUPABASE_ANON_KEY, SUPABASE_URL } from '@/features/aitalk/constants';
+import {
+  buildAitalkSpeechSsml,
+  DEFAULT_AITALK_SPEECH_STYLE,
+  normalizeAitalkSpeechLang,
+  prepareAitalkSpeechText,
+  resolveAitalkVoiceName,
+} from '@/features/aitalk/lib/tts';
+import { createAitalkBrowserClient } from '@/features/aitalk/supabase/browser';
 import { Loader2, Mic, MicOff, Send, Volume2 } from 'lucide-react';
 
 import { Button } from '@/shared/components/ui/button';
@@ -24,6 +33,45 @@ type AitalkSpeechRecognition = {
   stop: () => void;
 };
 
+type SpeechSdkModule = typeof import('microsoft-cognitiveservices-speech-sdk');
+type AzureSpeechSynthesizer = InstanceType<
+  SpeechSdkModule['SpeechSynthesizer']
+>;
+type AzureSpeakerDestination = InstanceType<
+  SpeechSdkModule['SpeakerAudioDestination']
+>;
+
+const TTS_CACHE_DB = 'aitalk-tts-cache-v1';
+const TTS_CACHE_STORE = 'audio';
+const AZURE_SPEECH_TOKEN_REFRESH_BUFFER_MS = 60_000;
+
+type AzureSpeechTokenResponse = {
+  error?: string;
+  expiresIn?: number;
+  region?: string;
+  token?: string;
+};
+
+type AzureSpeechToken = {
+  expiresAt: number;
+  region: string;
+  token: string;
+};
+
+type SpeechInput = {
+  lang: string;
+  name: string;
+  rate: string;
+  style: string;
+  text: string;
+};
+
+function getErrorMessage(error: unknown) {
+  if (error instanceof Error) return error.message;
+  if (typeof error === 'string') return error;
+  return '';
+}
+
 function resolveSpeechRecognition() {
   if (typeof window === 'undefined') return null;
   const speechWindow = window as Window &
@@ -36,6 +84,52 @@ function resolveSpeechRecognition() {
     speechWindow.webkitSpeechRecognition ||
     null
   );
+}
+
+function openTtsCache() {
+  return new Promise<IDBDatabase>((resolve, reject) => {
+    const request = indexedDB.open(TTS_CACHE_DB, 1);
+    request.onupgradeneeded = () => {
+      request.result.createObjectStore(TTS_CACHE_STORE);
+    };
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => resolve(request.result);
+  });
+}
+
+async function getCachedAudio(key: string) {
+  if (!('indexedDB' in window)) return null;
+  const db = await openTtsCache();
+  return new Promise<Blob | null>((resolve, reject) => {
+    const request = db
+      .transaction(TTS_CACHE_STORE, 'readonly')
+      .objectStore(TTS_CACHE_STORE)
+      .get(key);
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () =>
+      resolve((request.result as Blob | undefined) ?? null);
+  }).finally(() => db.close());
+}
+
+async function setCachedAudio(key: string, value: Blob) {
+  if (!('indexedDB' in window)) return;
+  const db = await openTtsCache();
+  await new Promise<void>((resolve, reject) => {
+    const request = db
+      .transaction(TTS_CACHE_STORE, 'readwrite')
+      .objectStore(TTS_CACHE_STORE)
+      .put(value, key);
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => resolve();
+  }).finally(() => db.close());
+}
+
+async function digestCacheKey(value: string) {
+  const bytes = new TextEncoder().encode(value);
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  return Array.from(new Uint8Array(digest))
+    .map((byte) => byte.toString(16).padStart(2, '0'))
+    .join('');
 }
 
 export function PracticeClient({
@@ -66,8 +160,16 @@ export function PracticeClient({
     number | null
   >(null);
   const [pending, startTransition] = useTransition();
+  const supabase = useMemo(() => createAitalkBrowserClient(), []);
   const recognitionRef = useRef<AitalkSpeechRecognition | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioUrlRef = useRef('');
+  const azureSpeechTokenRef = useRef<AzureSpeechToken | null>(null);
+  const azureSpeechSdkPromiseRef = useRef<Promise<SpeechSdkModule> | null>(
+    null
+  );
+  const azureSpeakerRef = useRef<AzureSpeakerDestination | null>(null);
+  const azureSynthesizerRef = useRef<AzureSpeechSynthesizer | null>(null);
 
   const title = useMemo(() => displayLessonTitle(lesson), [lesson]);
 
@@ -76,8 +178,23 @@ export function PracticeClient({
   }, []);
 
   useEffect(() => {
+    const preloadSpeechSdk = () => {
+      Promise.all([loadAzureSpeechSdk(), getAzureSpeechToken()]).catch(
+        () => undefined
+      );
+    };
+    if ('requestIdleCallback' in window) {
+      const handle = window.requestIdleCallback(preloadSpeechSdk);
+      return () => window.cancelIdleCallback(handle);
+    }
+
+    const handle = setTimeout(preloadSpeechSdk, 1200);
+    return () => clearTimeout(handle);
+  }, []);
+
+  useEffect(() => {
     return () => {
-      audioRef.current?.pause();
+      stopCurrentSpeech();
     };
   }, []);
 
@@ -117,54 +234,273 @@ export function PracticeClient({
     setListening(false);
   }
 
-  async function speak(value: string, messageIndex: number) {
-    const nextText = value.trim();
-    if (!nextText || speakingMessageIndex !== null) return;
+  function loadAzureSpeechSdk() {
+    azureSpeechSdkPromiseRef.current ??= import(
+      'microsoft-cognitiveservices-speech-sdk'
+    );
+    return azureSpeechSdkPromiseRef.current;
+  }
 
+  function revokeCurrentAudioUrl() {
+    if (!audioUrlRef.current) return;
+    URL.revokeObjectURL(audioUrlRef.current);
+    audioUrlRef.current = '';
+  }
+
+  function closeAzureSpeech() {
+    azureSynthesizerRef.current?.close();
+    azureSynthesizerRef.current = null;
+    azureSpeakerRef.current?.pause();
+    azureSpeakerRef.current?.close();
+    azureSpeakerRef.current = null;
+  }
+
+  function stopCurrentSpeech() {
     audioRef.current?.pause();
     audioRef.current = null;
+    revokeCurrentAudioUrl();
+    closeAzureSpeech();
+  }
+
+  async function speak(value: string, messageIndex: number) {
+    const lang = normalizeAitalkSpeechLang(speechLocale);
+    const nextText = prepareAitalkSpeechText(value, lang);
+    if (!nextText || speakingMessageIndex !== null) return;
+
+    const selectedVoiceName = resolveAitalkVoiceName(lang, voiceName);
+    const selectedStyle = speechStyle || DEFAULT_AITALK_SPEECH_STYLE;
+    const input: SpeechInput = {
+      text: nextText,
+      lang,
+      name: selectedVoiceName,
+      rate: 'default',
+      style: selectedStyle,
+    };
+    const cacheKey = await digestCacheKey(
+      JSON.stringify({
+        text: nextText,
+        lang,
+        name: selectedVoiceName,
+        style: selectedStyle,
+        rate: input.rate,
+      })
+    );
+
+    stopCurrentSpeech();
     setError('');
     setSpeakingMessageIndex(messageIndex);
 
-    let audioUrl = '';
     try {
-      const response = await fetch('/api/aitalk/text-speech', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          text: nextText,
-          lang: speechLocale || 'en-US',
-          name: voiceName,
-          style: speechStyle || 'friendly',
-        }),
-      });
-
-      if (!response.ok) {
-        const data = await response.json().catch(() => null);
-        throw new Error(data?.error || 'Text-to-speech failed.');
+      await speakWithAzureSpeechSdk(input);
+    } catch (error: any) {
+      console.warn('aitalk_azure_speech_playback_failed', error);
+      try {
+        await playCachedSpeechAudio(input, cacheKey);
+      } catch (fallbackError) {
+        const message =
+          getErrorMessage(fallbackError) ||
+          getErrorMessage(error) ||
+          'Text-to-speech failed.';
+        setError(message);
       }
+    } finally {
+      setSpeakingMessageIndex(null);
+    }
+  }
 
-      const audioBlob = await response.blob();
-      audioUrl = URL.createObjectURL(audioBlob);
-      const audio = new Audio(audioUrl);
-      audioRef.current = audio;
+  async function getAzureSpeechToken() {
+    const cached = azureSpeechTokenRef.current;
+    if (
+      cached &&
+      cached.expiresAt - AZURE_SPEECH_TOKEN_REFRESH_BUFFER_MS > Date.now()
+    ) {
+      return cached;
+    }
+
+    const response = await fetch('/api/aitalk/azure-speech-token', {
+      method: 'POST',
+    });
+    const data = (await response
+      .json()
+      .catch(() => null)) as AzureSpeechTokenResponse | null;
+    if (!response.ok) {
+      throw new Error(data?.error || 'Azure Speech failed.');
+    }
+    if (!data?.token || !data.region) {
+      throw new Error('Azure Speech token is invalid.');
+    }
+
+    const nextToken = {
+      token: data.token,
+      region: data.region,
+      expiresAt: Date.now() + (data.expiresIn || 540) * 1000,
+    };
+    azureSpeechTokenRef.current = nextToken;
+    return nextToken;
+  }
+
+  async function speakWithAzureSpeechSdk(input: SpeechInput) {
+    const [SpeechSDK, auth] = await Promise.all([
+      loadAzureSpeechSdk(),
+      getAzureSpeechToken(),
+    ]);
+
+    const speechConfig = SpeechSDK.SpeechConfig.fromAuthorizationToken(
+      auth.token,
+      auth.region
+    );
+    speechConfig.speechSynthesisLanguage = input.lang;
+    speechConfig.speechSynthesisVoiceName = input.name;
+    speechConfig.speechSynthesisOutputFormat =
+      SpeechSDK.SpeechSynthesisOutputFormat.Audio24Khz48KBitRateMonoMp3;
+
+    const speaker = new SpeechSDK.SpeakerAudioDestination();
+    const audioConfig = SpeechSDK.AudioConfig.fromSpeakerOutput(speaker);
+    const synthesizer = new SpeechSDK.SpeechSynthesizer(
+      speechConfig,
+      audioConfig
+    );
+    azureSpeakerRef.current = speaker;
+    azureSynthesizerRef.current = synthesizer;
+
+    const ssml = buildAitalkSpeechSsml(input);
+
+    await new Promise<void>((resolve, reject) => {
+      let settled = false;
+      let playbackStarted = false;
+
+      const close = () => {
+        audioConfig.close();
+        if (azureSynthesizerRef.current === synthesizer) {
+          azureSynthesizerRef.current = null;
+        }
+        if (azureSpeakerRef.current === speaker) {
+          azureSpeakerRef.current = null;
+        }
+        synthesizer.close();
+      };
+      const resolveOnce = () => {
+        if (settled) return;
+        settled = true;
+        close();
+        resolve();
+      };
+      const rejectOnce = (error: unknown) => {
+        if (settled) return;
+        settled = true;
+        close();
+        reject(error);
+      };
+
+      speaker.onAudioStart = () => {
+        playbackStarted = true;
+      };
+      speaker.onAudioEnd = () => {
+        resolveOnce();
+      };
+
+      synthesizer.speakSsmlAsync(
+        ssml,
+        (result) => {
+          if (result.reason === SpeechSDK.ResultReason.Canceled) {
+            rejectOnce(
+              new Error(result.errorDetails || 'Azure Speech failed.')
+            );
+            return;
+          }
+          if (!playbackStarted && !result.audioData?.byteLength) {
+            rejectOnce(new Error('Azure Speech returned empty audio.'));
+          }
+        },
+        (error) => {
+          rejectOnce(
+            new Error(getErrorMessage(error) || 'Azure Speech failed.')
+          );
+        }
+      );
+    });
+  }
+
+  async function playCachedSpeechAudio(input: SpeechInput, cacheKey: string) {
+    const cachedAudio = await getCachedAudio(cacheKey).catch(() => null);
+    const audioBlob = cachedAudio || (await fetchSpeechAudio(input));
+    if (!cachedAudio) {
+      await setCachedAudio(cacheKey, audioBlob).catch(() => undefined);
+    }
+
+    await playAudioBlob(audioBlob);
+  }
+
+  async function playAudioBlob(audioBlob: Blob) {
+    revokeCurrentAudioUrl();
+
+    const audioUrl = URL.createObjectURL(audioBlob);
+    const audio = new Audio(audioUrl);
+    audioUrlRef.current = audioUrl;
+    audioRef.current = audio;
+
+    await new Promise<void>((resolve, reject) => {
       audio.onended = () => {
-        setSpeakingMessageIndex(null);
-        URL.revokeObjectURL(audioUrl);
+        if (audioRef.current === audio) audioRef.current = null;
+        revokeCurrentAudioUrl();
+        resolve();
       };
       audio.onerror = () => {
-        setSpeakingMessageIndex(null);
-        URL.revokeObjectURL(audioUrl);
-        setError('Audio playback failed.');
+        if (audioRef.current === audio) audioRef.current = null;
+        revokeCurrentAudioUrl();
+        reject(new Error('Audio playback failed.'));
       };
-      await audio.play();
-    } catch (error: any) {
-      if (audioUrl) URL.revokeObjectURL(audioUrl);
-      setSpeakingMessageIndex(null);
-      setError(error?.message || 'Text-to-speech failed.');
+      audio.play().catch((error) => {
+        if (audioRef.current === audio) audioRef.current = null;
+        revokeCurrentAudioUrl();
+        reject(error);
+      });
+    });
+  }
+
+  async function fetchSpeechAudio(input: SpeechInput) {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
+    if (session?.access_token) {
+      const directResponse = await fetch(
+        `${SUPABASE_URL.replace(/\/$/, '')}/functions/v1/text-speech`,
+        {
+          method: 'POST',
+          headers: {
+            Accept: 'audio/mpeg, application/octet-stream',
+            apikey: SUPABASE_ANON_KEY,
+            Authorization: `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            ...input,
+          }),
+        }
+      );
+
+      if (directResponse.ok) {
+        return directResponse.blob();
+      }
     }
+
+    const response = await fetch('/api/aitalk/text-speech', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        ...input,
+      }),
+    });
+
+    if (!response.ok) {
+      const data = await response.json().catch(() => null);
+      throw new Error(data?.error || 'Text-to-speech failed.');
+    }
+
+    return response.blob();
   }
 
   function submit() {

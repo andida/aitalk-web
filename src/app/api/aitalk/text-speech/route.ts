@@ -1,60 +1,23 @@
 import { NextResponse } from 'next/server';
 import { SUPABASE_ANON_KEY, SUPABASE_URL } from '@/features/aitalk/constants';
+import {
+  DEFAULT_AITALK_SPEECH_STYLE,
+  normalizeAitalkSpeechLang,
+  prepareAitalkSpeechText,
+  resolveAitalkVoiceName,
+} from '@/features/aitalk/lib/tts';
 import { createAitalkServerClient } from '@/features/aitalk/supabase/server';
-
-const DEFAULT_VOICE_NAME = 'en-US-JennyNeural';
-const DEFAULT_LANG = 'en-US';
-const DEFAULT_STYLE = 'friendly';
-
-const VOICE_BY_LANG: Record<string, string> = {
-  'en-us': 'en-US-JennyNeural',
-  en: 'en-US-JennyNeural',
-  'zh-cn': 'zh-CN-XiaoxiaoNeural',
-  zh: 'zh-CN-XiaoxiaoNeural',
-  'zh-hk': 'zh-HK-HiuMaanNeural',
-  'zh-tw': 'zh-TW-HsiaoChenNeural',
-  'ja-jp': 'ja-JP-NanamiNeural',
-  ja: 'ja-JP-NanamiNeural',
-  'ko-kr': 'ko-KR-SunHiNeural',
-  ko: 'ko-KR-SunHiNeural',
-  'fr-fr': 'fr-FR-DeniseNeural',
-  fr: 'fr-FR-DeniseNeural',
-  'de-de': 'de-DE-KatjaNeural',
-  de: 'de-DE-KatjaNeural',
-  'it-it': 'it-IT-ElsaNeural',
-  it: 'it-IT-ElsaNeural',
-  'es-es': 'es-ES-ElviraNeural',
-  es: 'es-ES-ElviraNeural',
-  'pt-br': 'pt-BR-FranciscaNeural',
-  pt: 'pt-BR-FranciscaNeural',
-  'vi-vn': 'vi-VN-HoaiMyNeural',
-  vi: 'vi-VN-HoaiMyNeural',
-};
 
 function jsonError(message: string, status = 400) {
   return NextResponse.json({ error: message }, { status });
 }
 
-function normalizeLang(value: unknown) {
-  const lang = typeof value === 'string' ? value.trim() : '';
-  return lang || DEFAULT_LANG;
-}
-
-function resolveVoiceName(lang: string, value: unknown) {
-  const requested = typeof value === 'string' ? value.trim() : '';
-  if (requested) return requested;
-  const normalized = lang.toLowerCase();
-  return (
-    VOICE_BY_LANG[normalized] ||
-    VOICE_BY_LANG[normalized.split('-')[0]] ||
-    DEFAULT_VOICE_NAME
-  );
-}
-
 export async function POST(request: Request) {
   try {
     const body = await request.json().catch(() => null);
-    const text = typeof body?.text === 'string' ? body.text.trim() : '';
+    const lang = normalizeAitalkSpeechLang(body?.lang);
+    const rawText = typeof body?.text === 'string' ? body.text : '';
+    const text = prepareAitalkSpeechText(rawText, lang);
     if (!text) return jsonError('Text is required.');
     if (text.length > 4000) return jsonError('Text is too long.', 413);
 
@@ -70,8 +33,7 @@ export async function POST(request: Request) {
     } = await supabase.auth.getSession();
     if (!session?.access_token) return jsonError('Unauthorized.', 401);
 
-    const lang = normalizeLang(body?.lang);
-    const voiceName = resolveVoiceName(lang, body?.name);
+    const voiceName = resolveAitalkVoiceName(lang, body?.name);
 
     const response = await fetch(
       `${SUPABASE_URL.replace(/\/$/, '')}/functions/v1/text-speech`,
@@ -85,10 +47,10 @@ export async function POST(request: Request) {
         },
         body: JSON.stringify({
           text,
-          rate: body?.rate || 1,
+          rate: body?.rate || 'default',
           name: voiceName,
           lang,
-          style: body?.style || DEFAULT_STYLE,
+          style: body?.style || DEFAULT_AITALK_SPEECH_STYLE,
         }),
       }
     );

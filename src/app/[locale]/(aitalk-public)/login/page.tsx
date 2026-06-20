@@ -24,9 +24,9 @@ const loginCopy = {
     google: '使用 Google 继续',
     apple: '使用 Apple 继续',
     loading: '正在跳转',
-    secureTitle: 'Supabase Auth 账号体系',
+    secureTitle: '同步你的 AI 口语学习进度',
     secureDescription:
-      '登录完成后会回到 Web，并使用同一个 user id 读取学习数据。',
+      '登录后可继续课程计划、练习记录和收藏内容，Web 与 App 使用同一账号自动同步。',
     error: '登录没有完成，请重新选择 Google 或 Apple。',
     expiredError: '登录请求已过期，请重新点击 Google 继续。',
     legalPrefix: '继续即表示你同意 AITalk 的',
@@ -50,9 +50,9 @@ const loginCopy = {
     google: 'Continue with Google',
     apple: 'Continue with Apple',
     loading: 'Redirecting',
-    secureTitle: 'Supabase Auth account system',
+    secureTitle: 'Sync your AI speaking practice',
     secureDescription:
-      'After sign in, Web uses the same user id to read your learning data.',
+      'Sign in to continue your lesson plan, practice history, progress and saved phrases across web and app.',
     error: 'Sign-in was not completed. Please try Google or Apple again.',
     expiredError: 'The sign-in request expired. Please click Google again.',
     legalPrefix: 'By continuing, you agree to AITalk',

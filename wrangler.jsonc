@@ -26,6 +26,7 @@
     "NEXT_PUBLIC_APP_FAVICON": "/favicon.svg",
     "NEXT_PUBLIC_SUPABASE_URL": "https://jkdhpfscpoahowolprco.supabase.co",
     "NEXT_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImprZGhwZnNjcG9haG93b2xwcmNvIiwicm9sZSI6ImFub24iLCJpYXQiOjE2ODgzNDE3NTQsImV4cCI6MjAwMzkxNzc1NH0.cMmgh_NJX4A5TT7i33FHufTn1UKao8tIM9HaREDnK-o",
+    "AZURE_SPEECH_REGION": "southeastasia",
     "NEXT_PUBLIC_THEME": "default",
     "NEXT_PUBLIC_APPEARANCE": "system",
     "DATABASE_PROVIDER": "postgresql",
