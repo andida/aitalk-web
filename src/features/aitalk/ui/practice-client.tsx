@@ -33,6 +33,11 @@ type AitalkSpeechRecognition = {
   stop: () => void;
 };
 
+type AudioContextWindow = Window &
+  typeof globalThis & {
+    webkitAudioContext?: typeof AudioContext;
+  };
+
 type SpeechSdkModule = typeof import('microsoft-cognitiveservices-speech-sdk');
 type AzureSpeechSynthesizer = InstanceType<
   SpeechSdkModule['SpeechSynthesizer']
@@ -64,6 +69,10 @@ type SpeechInput = {
   rate: string;
   style: string;
   text: string;
+};
+
+type SpeakOptions = {
+  interrupt?: boolean;
 };
 
 function getErrorMessage(error: unknown) {
@@ -164,6 +173,7 @@ export function PracticeClient({
   const recognitionRef = useRef<AitalkSpeechRecognition | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const audioUrlRef = useRef('');
+  const audioUnlockedRef = useRef(false);
   const azureSpeechTokenRef = useRef<AzureSpeechToken | null>(null);
   const azureSpeechSdkPromiseRef = useRef<Promise<SpeechSdkModule> | null>(
     null
@@ -262,10 +272,43 @@ export function PracticeClient({
     closeAzureSpeech();
   }
 
-  async function speak(value: string, messageIndex: number) {
+  function unlockAudioPlayback() {
+    if (audioUnlockedRef.current) return;
+    audioUnlockedRef.current = true;
+
+    try {
+      const audioWindow = window as AudioContextWindow;
+      const AudioContextConstructor =
+        audioWindow.AudioContext || audioWindow.webkitAudioContext;
+      if (!AudioContextConstructor) return;
+
+      const audioContext = new AudioContextConstructor();
+      const oscillator = audioContext.createOscillator();
+      const gain = audioContext.createGain();
+      gain.gain.value = 0;
+      oscillator.connect(gain);
+      gain.connect(audioContext.destination);
+      oscillator.start();
+      oscillator.stop(audioContext.currentTime + 0.01);
+      void audioContext.resume().finally(() => {
+        window.setTimeout(() => {
+          void audioContext.close().catch(() => undefined);
+        }, 100);
+      });
+    } catch {
+      audioUnlockedRef.current = false;
+    }
+  }
+
+  async function speak(
+    value: string,
+    messageIndex: number,
+    options: SpeakOptions = {}
+  ) {
     const lang = normalizeAitalkSpeechLang(speechLocale);
     const nextText = prepareAitalkSpeechText(value, lang);
-    if (!nextText || speakingMessageIndex !== null) return;
+    if (!nextText) return;
+    if (speakingMessageIndex !== null && !options.interrupt) return;
 
     const selectedVoiceName = resolveAitalkVoiceName(lang, voiceName);
     const selectedStyle = speechStyle || DEFAULT_AITALK_SPEECH_STYLE;
@@ -506,6 +549,7 @@ export function PracticeClient({
   function submit() {
     const nextText = text.trim();
     if (!nextText || pending) return;
+    unlockAudioPlayback();
     const nextMessages: PracticeMessage[] = [
       ...messages,
       { role: 'user', content: nextText },
@@ -527,15 +571,17 @@ export function PracticeClient({
         return;
       }
 
+      const assistantReply =
+        result.reply ||
+        'Good. Try again with one more detail and clearer pronunciation.';
       setMessages((current) => [
         ...current,
         {
           role: 'assistant',
-          content:
-            result.reply ||
-            'Good. Try again with one more detail and clearer pronunciation.',
+          content: assistantReply,
         },
       ]);
+      void speak(assistantReply, nextMessages.length, { interrupt: true });
     });
   }
 
