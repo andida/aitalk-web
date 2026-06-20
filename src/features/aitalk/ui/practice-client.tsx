@@ -75,6 +75,8 @@ type SpeakOptions = {
   interrupt?: boolean;
 };
 
+type SpeakingPhase = 'loading' | 'playing';
+
 function getErrorMessage(error: unknown) {
   if (error instanceof Error) return error.message;
   if (typeof error === 'string') return error;
@@ -168,12 +170,14 @@ export function PracticeClient({
   const [speakingMessageIndex, setSpeakingMessageIndex] = useState<
     number | null
   >(null);
+  const [speakingPhase, setSpeakingPhase] = useState<SpeakingPhase>('loading');
   const [pending, startTransition] = useTransition();
   const supabase = useMemo(() => createAitalkBrowserClient(), []);
   const recognitionRef = useRef<AitalkSpeechRecognition | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const audioUrlRef = useRef('');
   const audioUnlockedRef = useRef(false);
+  const speechRunIdRef = useRef(0);
   const azureSpeechTokenRef = useRef<AzureSpeechToken | null>(null);
   const azureSpeechSdkPromiseRef = useRef<Promise<SpeechSdkModule> | null>(
     null
@@ -329,16 +333,24 @@ export function PracticeClient({
       })
     );
 
+    const speechRunId = speechRunIdRef.current + 1;
+    speechRunIdRef.current = speechRunId;
     stopCurrentSpeech();
     setError('');
+    setSpeakingPhase('loading');
     setSpeakingMessageIndex(messageIndex);
 
+    const markPlaybackStarted = () => {
+      if (speechRunIdRef.current !== speechRunId) return;
+      setSpeakingPhase('playing');
+    };
+
     try {
-      await speakWithAzureSpeechSdk(input);
+      await speakWithAzureSpeechSdk(input, markPlaybackStarted);
     } catch (error: any) {
       console.warn('aitalk_azure_speech_playback_failed', error);
       try {
-        await playCachedSpeechAudio(input, cacheKey);
+        await playCachedSpeechAudio(input, cacheKey, markPlaybackStarted);
       } catch (fallbackError) {
         const message =
           getErrorMessage(fallbackError) ||
@@ -347,7 +359,10 @@ export function PracticeClient({
         setError(message);
       }
     } finally {
-      setSpeakingMessageIndex(null);
+      if (speechRunIdRef.current === speechRunId) {
+        setSpeakingMessageIndex(null);
+        setSpeakingPhase('loading');
+      }
     }
   }
 
@@ -382,7 +397,10 @@ export function PracticeClient({
     return nextToken;
   }
 
-  async function speakWithAzureSpeechSdk(input: SpeechInput) {
+  async function speakWithAzureSpeechSdk(
+    input: SpeechInput,
+    onPlaybackStart?: () => void
+  ) {
     const [SpeechSDK, auth] = await Promise.all([
       loadAzureSpeechSdk(),
       getAzureSpeechToken(),
@@ -411,8 +429,14 @@ export function PracticeClient({
     await new Promise<void>((resolve, reject) => {
       let settled = false;
       let playbackStarted = false;
+      let playbackStartedAt = 0;
+      let playbackFallbackTimer: ReturnType<typeof setTimeout> | null = null;
 
       const close = () => {
+        if (playbackFallbackTimer) {
+          clearTimeout(playbackFallbackTimer);
+          playbackFallbackTimer = null;
+        }
         audioConfig.close();
         if (azureSynthesizerRef.current === synthesizer) {
           azureSynthesizerRef.current = null;
@@ -434,9 +458,25 @@ export function PracticeClient({
         close();
         reject(error);
       };
+      const schedulePlaybackFallback = (audioDuration?: number) => {
+        if (settled) return;
+        if (playbackFallbackTimer) return;
+
+        const durationMs =
+          typeof audioDuration === 'number' && audioDuration > 0
+            ? audioDuration / 10_000
+            : Math.min(30_000, Math.max(2_500, input.text.length * 80));
+        const elapsedMs = playbackStartedAt
+          ? Date.now() - playbackStartedAt
+          : 0;
+        const remainingMs = Math.max(1_000, durationMs - elapsedMs + 1_500);
+        playbackFallbackTimer = setTimeout(resolveOnce, remainingMs);
+      };
 
       speaker.onAudioStart = () => {
         playbackStarted = true;
+        playbackStartedAt = Date.now();
+        onPlaybackStart?.();
       };
       speaker.onAudioEnd = () => {
         resolveOnce();
@@ -453,7 +493,9 @@ export function PracticeClient({
           }
           if (!playbackStarted && !result.audioData?.byteLength) {
             rejectOnce(new Error('Azure Speech returned empty audio.'));
+            return;
           }
+          schedulePlaybackFallback(result.audioDuration);
         },
         (error) => {
           rejectOnce(
@@ -464,17 +506,21 @@ export function PracticeClient({
     });
   }
 
-  async function playCachedSpeechAudio(input: SpeechInput, cacheKey: string) {
+  async function playCachedSpeechAudio(
+    input: SpeechInput,
+    cacheKey: string,
+    onPlaybackStart?: () => void
+  ) {
     const cachedAudio = await getCachedAudio(cacheKey).catch(() => null);
     const audioBlob = cachedAudio || (await fetchSpeechAudio(input));
     if (!cachedAudio) {
       await setCachedAudio(cacheKey, audioBlob).catch(() => undefined);
     }
 
-    await playAudioBlob(audioBlob);
+    await playAudioBlob(audioBlob, onPlaybackStart);
   }
 
-  async function playAudioBlob(audioBlob: Blob) {
+  async function playAudioBlob(audioBlob: Blob, onPlaybackStart?: () => void) {
     revokeCurrentAudioUrl();
 
     const audioUrl = URL.createObjectURL(audioBlob);
@@ -492,6 +538,9 @@ export function PracticeClient({
         if (audioRef.current === audio) audioRef.current = null;
         revokeCurrentAudioUrl();
         reject(new Error('Audio playback failed.'));
+      };
+      audio.onplaying = () => {
+        onPlaybackStart?.();
       };
       audio.play().catch((error) => {
         if (audioRef.current === audio) audioRef.current = null;
@@ -621,11 +670,19 @@ export function PracticeClient({
                   className="mt-2 inline-flex items-center gap-1 text-xs font-bold text-emerald-700 dark:text-emerald-300"
                 >
                   {speakingMessageIndex === index ? (
-                    <Loader2 className="size-3.5 animate-spin" />
+                    speakingPhase === 'loading' ? (
+                      <Loader2 className="size-3.5 animate-spin" />
+                    ) : (
+                      <Volume2 className="size-3.5" />
+                    )
                   ) : (
                     <Volume2 className="size-3.5" />
                   )}
-                  {speakingMessageIndex === index ? 'Loading' : 'Play'}
+                  {speakingMessageIndex === index
+                    ? speakingPhase === 'loading'
+                      ? 'Loading'
+                      : 'Playing'
+                    : 'Play'}
                 </button>
               ) : null}
             </div>
