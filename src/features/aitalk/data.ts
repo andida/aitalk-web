@@ -305,7 +305,8 @@ export async function getRecommendedLessons(
     level == null
       ? []
       : activeLessons.filter((lesson) => lessonLevel(lesson) === level);
-  const candidateLessons = levelLessons.length > 0 ? levelLessons : activeLessons;
+  const candidateLessons =
+    levelLessons.length > 0 ? levelLessons : activeLessons;
 
   const ranked = [...candidateLessons].sort((a, b) => {
     const scoreA = scoreLesson(a, {
@@ -375,7 +376,8 @@ export async function getLessonStepI18nMap(
 ) {
   const nativeLanguage =
     profile?.native_language || profile?.native_language_code || null;
-  if (!nativeLanguage || steps.length === 0) return new Map<number, CourseLessonStepI18n>();
+  if (!nativeLanguage || steps.length === 0)
+    return new Map<number, CourseLessonStepI18n>();
 
   const { data, error } = await supabase
     .from('course_lesson_step_i18n')
@@ -448,7 +450,9 @@ export async function startLessonProgress(
   planId?: number | null
 ) {
   const user = await requireUser(supabase);
-  const existing = await getLessonProgress(supabase, lessonId).catch(() => null);
+  const existing = await getLessonProgress(supabase, lessonId).catch(
+    () => null
+  );
   const now = new Date().toISOString();
   const isCompleted = existing?.status === 'completed';
   const currentPercent = existing?.progress_percent ?? 0;
@@ -487,7 +491,9 @@ export async function completeLessonProgress(
   planId?: number | null
 ) {
   const user = await requireUser(supabase);
-  const existing = await getLessonProgress(supabase, lessonId).catch(() => null);
+  const existing = await getLessonProgress(supabase, lessonId).catch(
+    () => null
+  );
   const now = new Date().toISOString();
   const payload: Record<string, any> = {
     user_id: user.id,
@@ -607,7 +613,8 @@ async function advanceLearningPlanAfterLesson(
   const current = items.find((item) => item.lesson_id === lessonId);
   if (!current) return;
   const next = items.find(
-    (item) => item.plan_order > current.plan_order && item.status !== 'completed'
+    (item) =>
+      item.plan_order > current.plan_order && item.status !== 'completed'
   );
   if (next) {
     await updateCurrentLearningPlanLesson(supabase, planId, next.lesson_id);
@@ -714,7 +721,7 @@ export async function getActiveLearningPlan(
 
   const lesson = plan.current_lesson_id
     ? await getLessonById(supabase, plan.current_lesson_id)
-    : (await getRecommendedLessons(supabase, profile, 1))[0] ?? null;
+    : ((await getRecommendedLessons(supabase, profile, 1))[0] ?? null);
   let items = await getLearningPlanItems(supabase, plan.id);
   if (items.length === 0) {
     const lessons = await getRecommendedLessons(supabase, profile, 20);
@@ -726,11 +733,16 @@ export async function getActiveLearningPlan(
     lesson,
     progress: lesson ? await getLessonProgress(supabase, lesson.id) : null,
     items,
-    lessonI18n: lesson ? await getLessonI18n(supabase, lesson.id, profile) : null,
+    lessonI18n: lesson
+      ? await getLessonI18n(supabase, lesson.id, profile)
+      : null,
   };
 }
 
-export async function getCollectList(supabase: Client, language?: string | null) {
+export async function getCollectList(
+  supabase: Client,
+  language?: string | null
+) {
   const user = await requireUser(supabase);
   let query = supabase
     .from('collect')
@@ -771,18 +783,50 @@ export async function invokeCourseTutorAgent(
   supabase: Client,
   body: Record<string, any>
 ) {
-  const { data, error } = await supabase.functions.invoke('course-tutor-agent', {
-    body,
-  });
-  if (error) throw error;
-  if (typeof data === 'string' && data) {
-    try {
-      return JSON.parse(data);
-    } catch {
-      return { text: data };
+  const agentUrl =
+    process.env.COURSE_TUTOR_AGENT_URL ||
+    process.env.NEXT_PUBLIC_COURSE_TUTOR_AGENT_URL ||
+    'https://agent.aitalk.im/course-tutor-agent';
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+
+  if (session?.access_token && agentUrl) {
+    const response = await fetch(agentUrl, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${session.access_token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
+    const responseText = await response.text();
+    const responseData = responseText ? parseJsonOrText(responseText) : null;
+
+    if (response.ok) {
+      return responseData;
     }
   }
+
+  const { data, error } = await supabase.functions.invoke(
+    'course-tutor-agent',
+    {
+      body,
+    }
+  );
+  if (error) throw error;
+  if (typeof data === 'string' && data) {
+    return parseJsonOrText(data);
+  }
   return data;
+}
+
+function parseJsonOrText(value: string) {
+  try {
+    return JSON.parse(value);
+  } catch {
+    return { text: value };
+  }
 }
 
 export async function getTextSpeech(

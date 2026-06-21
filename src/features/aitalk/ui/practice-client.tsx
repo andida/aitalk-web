@@ -144,16 +144,24 @@ async function digestCacheKey(value: string) {
 }
 
 export function PracticeClient({
+  learnLanguage,
   lesson,
   locale,
+  nativeLanguage,
+  planId,
   speechLocale,
   speechStyle,
+  teacherName,
   voiceName,
 }: {
+  learnLanguage: string;
   lesson: LessonListDetail | null;
   locale: string;
+  nativeLanguage: string;
+  planId?: number;
   speechLocale: string;
   speechStyle?: string;
+  teacherName?: string;
   voiceName?: string;
 }) {
   const [messages, setMessages] = useState<PracticeMessage[]>([
@@ -609,7 +617,12 @@ export function PracticeClient({
 
     startTransition(async () => {
       const result = await askTutorAction({
+        chatTopic: title,
+        learnLanguage,
         lessonId: lesson?.id,
+        nativeLanguage,
+        planId,
+        teacherName,
         text: nextText,
         locale,
         messages: nextMessages,

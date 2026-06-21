@@ -42,8 +42,14 @@ export default async function PracticePage({
       <PracticeClient
         lesson={lesson}
         locale={locale}
+        planId={activePlan?.plan?.id ?? undefined}
+        learnLanguage={profile?.learn_language || 'English'}
+        nativeLanguage={
+          profile?.native_language || profile?.native_language_code || 'English'
+        }
         speechLocale={profile?.learn_language_code || 'en-US'}
         speechStyle={teacher?.style || 'friendly'}
+        teacherName={teacher?.name || undefined}
         voiceName={teacher?.voice_name || teacher?.voiceName || undefined}
       />
     </AitalkAppShell>

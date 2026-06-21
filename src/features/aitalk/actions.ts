@@ -52,7 +52,9 @@ export async function completeOnboardingAction(
     const payload = parseOnboarding(formData);
 
     const missing = Object.entries(payload).filter(([, value]) => {
-      return value === undefined || value === null || String(value).length === 0;
+      return (
+        value === undefined || value === null || String(value).length === 0
+      );
     });
     if (missing.length > 0) {
       return { error: 'Please complete every onboarding field.' };
@@ -105,7 +107,12 @@ export async function signOutAction(locale: string) {
 }
 
 export async function askTutorAction(input: {
+  chatTopic?: string;
+  learnLanguage?: string;
   lessonId?: number;
+  nativeLanguage?: string;
+  planId?: number;
+  teacherName?: string;
   text: string;
   locale?: string;
   messages?: Array<{ role: string; content: string }>;
@@ -117,7 +124,19 @@ export async function askTutorAction(input: {
   }
 
   const data = await invokeCourseTutorAgent(supabase, {
+    learn_language: input.learnLanguage,
     lesson_id: input.lessonId,
+    native_language: input.nativeLanguage,
+    plan_id: input.planId,
+    teacher_name: input.teacherName,
+    chat_topic: input.chatTopic,
+    required_turns: 4,
+    success_criteria: [],
+    auto_send: false,
+    labels: {
+      hint: 'Hint',
+      you_can_say: 'You can say',
+    },
     message: text,
     messages: input.messages ?? [],
     source: 'web',
