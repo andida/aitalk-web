@@ -243,14 +243,14 @@
       ]
     },
     "sync": {
-      "title": "和 AITalk App 共用同一套用户体系。",
-      "description": "Web 登录直接使用 Supabase Auth，所以 Google 和 Apple 账号会映射到 App 已有 user id。",
+      "title": "换到 Web，也能接着学。",
+      "description": "使用 Google 或 Apple 登录后，你的课程、进度和收藏会在 Web 与 iOS App 间保持一致。",
       "bullets": [
-        "Google 和 Apple OAuth 使用同一个 Supabase 项目。",
-        "Profile、学习计划、课程进度和收藏都使用 auth.users.id。",
-        "service role key 不会进入客户端 bundle。"
+        "Web 和 iOS 使用同一个登录账号。",
+        "学习计划和课程进度会自动同步。",
+        "收藏内容和练习记录回来就能继续用。"
       ],
-      "providers": ["Google", "Apple ID", "Supabase Auth"]
+      "providers": ["Google", "Apple ID", "AITalk App"]
     },
     "cta": {
       "title": "今天就和 AI 导师开口练。",

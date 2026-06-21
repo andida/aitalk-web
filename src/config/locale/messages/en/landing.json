@@ -243,14 +243,14 @@
       ]
     },
     "sync": {
-      "title": "Same user system as the AITalk app.",
-      "description": "Web sign in uses Supabase Auth directly, so Google and Apple accounts map to the existing app user id.",
+      "title": "Pick up where you left off.",
+      "description": "Sign in with Google or Apple and continue the same lessons, progress and collections across Web and iOS.",
       "bullets": [
-        "Google and Apple OAuth run through the same Supabase project.",
-        "Profiles, learning plans, lesson progress and collections use auth.users.id.",
-        "No service role key is shipped to the client bundle."
+        "Use the same login on Web and iOS.",
+        "Your plan and lesson progress stay in sync.",
+        "Collections and practice history are ready when you return."
       ],
-      "providers": ["Google", "Apple ID", "Supabase Auth"]
+      "providers": ["Google", "Apple ID", "AITalk App"]
     },
     "cta": {
       "title": "Speak with AI tutors today.",
