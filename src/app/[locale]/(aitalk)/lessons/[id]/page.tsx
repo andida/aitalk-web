@@ -1,5 +1,4 @@
 import { notFound, redirect } from 'next/navigation';
-import { completeLessonAction } from '@/features/aitalk/actions';
 import {
   displayLessonSubtitle,
   displayLessonTitle,
@@ -17,7 +16,7 @@ import { withLocale } from '@/features/aitalk/lib/paths';
 import { createAitalkServerClient } from '@/features/aitalk/supabase/server';
 import type { CourseLessonStep } from '@/features/aitalk/types';
 import { AitalkAppShell } from '@/features/aitalk/ui/app-shell';
-import { CheckCircle2, MessageCircle } from 'lucide-react';
+import { MessageCircle, RotateCcw } from 'lucide-react';
 
 import { Link } from '@/core/i18n/navigation';
 import { Badge } from '@/shared/components/ui/badge';
@@ -74,15 +73,41 @@ export default async function LessonDetailPage({
                 {displayLessonSubtitle(lesson, i18n)}
               </p>
             </div>
-            <Button
-              asChild
-              className="h-11 rounded-xl bg-emerald-500 text-white hover:bg-emerald-600"
-            >
-              <Link href={`/practice?lesson=${lesson.id}`}>
-                <MessageCircle className="size-5" />
-                Practice
-              </Link>
-            </Button>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              {isCompleted ? (
+                <>
+                  <Button
+                    asChild
+                    className="h-11 rounded-xl bg-emerald-500 text-white hover:bg-emerald-600"
+                  >
+                    <Link href={`/practice?lesson=${lesson.id}`}>
+                      <RotateCcw className="size-5" />
+                      Review
+                    </Link>
+                  </Button>
+                  <Button
+                    asChild
+                    variant="outline"
+                    className="h-11 rounded-xl border-emerald-200 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-400/30 dark:text-emerald-200 dark:hover:bg-emerald-500/10"
+                  >
+                    <Link href={`/practice?lesson=${lesson.id}&mode=free`}>
+                      <MessageCircle className="size-5" />
+                      Free talk
+                    </Link>
+                  </Button>
+                </>
+              ) : (
+                <Button
+                  asChild
+                  className="h-11 rounded-xl bg-emerald-500 text-white hover:bg-emerald-600"
+                >
+                  <Link href={`/practice?lesson=${lesson.id}`}>
+                    <MessageCircle className="size-5" />
+                    Continue practice
+                  </Link>
+                </Button>
+              )}
+            </div>
           </div>
         </section>
 
@@ -122,23 +147,6 @@ export default async function LessonDetailPage({
             }
           )}
         </section>
-
-        {!isCompleted ? (
-          <form
-            action={completeLessonAction.bind(
-              null,
-              locale,
-              lesson.id,
-              activePlan?.plan?.id
-            )}
-            className="mt-6"
-          >
-            <Button className="h-12 w-full rounded-xl bg-emerald-500 text-base font-bold text-white hover:bg-emerald-600 md:w-auto md:px-8">
-              <CheckCircle2 className="size-5" />
-              Mark lesson complete
-            </Button>
-          </form>
-        ) : null}
       </div>
     </AitalkAppShell>
   );

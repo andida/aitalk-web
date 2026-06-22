@@ -16,6 +16,7 @@ import type {
   CourseLessonStep,
   CourseLessonStepI18n,
   LessonListDetail,
+  LessonPracticeConfig,
   OnboardingInput,
   TopicExercise,
   UserLearningPlan,
@@ -31,6 +32,45 @@ function asArray<T>(value: unknown): T[] {
 
 function first<T>(value: T[] | null | undefined): T | null {
   return value && value.length > 0 ? value[0] : null;
+}
+
+function asRecord(value: unknown) {
+  return value && typeof value === 'object'
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function readNumberFromRecords(keys: string[], records: unknown[]) {
+  for (const recordValue of records) {
+    const record = asRecord(recordValue);
+    for (const key of keys) {
+      const value = record[key];
+      if (typeof value === 'number' && Number.isFinite(value)) return value;
+      if (typeof value === 'string') {
+        const parsed = Number.parseInt(value, 10);
+        if (Number.isFinite(parsed)) return parsed;
+      }
+    }
+  }
+  return null;
+}
+
+function readStringListFromRecords(keys: string[], records: unknown[]) {
+  const values: string[] = [];
+  for (const recordValue of records) {
+    const record = asRecord(recordValue);
+    for (const key of keys) {
+      const value = record[key];
+      if (Array.isArray(value)) {
+        values.push(
+          ...value.map((item) => String(item || '').trim()).filter(Boolean)
+        );
+      } else if (typeof value === 'string' && value.trim()) {
+        values.push(value.trim());
+      }
+    }
+  }
+  return Array.from(new Set(values));
 }
 
 function textEqual(a: string | null | undefined, b: string | null | undefined) {
@@ -110,6 +150,31 @@ export function displayLessonSubtitle(
     lesson.content ||
     'Practice useful phrases and build speaking confidence.'
   );
+}
+
+export function getLessonPracticeConfig(
+  steps: CourseLessonStep[]
+): LessonPracticeConfig {
+  const roleplayStep =
+    steps.find((step) => {
+      const type = (step.step_type || step.type || '').toLowerCase();
+      return type === 'roleplay';
+    }) ?? null;
+
+  const requiredTurns =
+    readNumberFromRecords(
+      ['required_turns', 'requiredTurns', 'turns'],
+      [roleplayStep?.content, roleplayStep?.scoring_rubric]
+    ) ?? 4;
+  const successCriteria = readStringListFromRecords(
+    ['success_criteria', 'successCriteria', 'criteria'],
+    [roleplayStep?.content, roleplayStep?.scoring_rubric]
+  );
+
+  return {
+    requiredTurns: Math.min(6, Math.max(4, requiredTurns)),
+    successCriteria,
+  };
 }
 
 export function displayTopicTitle(topic: TopicExercise | null) {
@@ -799,6 +864,23 @@ export async function getActiveLearningPlan(
       ? await getLessonI18n(supabase, lesson.id, profile)
       : null,
   };
+}
+
+export function getNextPlanLessonId(
+  activePlan: ActiveLearningPlan | null,
+  lessonId: number
+) {
+  const items = [...(activePlan?.items ?? [])].sort(
+    (a, b) => a.plan_order - b.plan_order
+  );
+  const current = items.find((item) => item.lesson_id === lessonId);
+  if (!current) return null;
+  return (
+    items.find(
+      (item) =>
+        item.plan_order > current.plan_order && item.status !== 'completed'
+    )?.lesson_id ?? null
+  );
 }
 
 export async function getCollectList(

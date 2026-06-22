@@ -212,6 +212,19 @@ export async function completeLessonAction(
   revalidatePath(withLocale(`/lessons/${lessonId}`, locale));
 }
 
+export async function completeLessonFromPracticeAction(input: {
+  lessonId: number;
+  locale: string;
+  planId?: number | null;
+}) {
+  const supabase = await createAitalkServerClient();
+  await completeLessonProgress(supabase, input.lessonId, input.planId);
+  revalidatePath(withLocale('/lessons', input.locale));
+  revalidatePath(withLocale(`/lessons/${input.lessonId}`, input.locale));
+  revalidatePath(withLocale('/app', input.locale));
+  return { ok: true };
+}
+
 export async function signOutAction(locale: string) {
   const supabase = await createAitalkServerClient();
   await supabase.auth.signOut();
@@ -219,6 +232,7 @@ export async function signOutAction(locale: string) {
 }
 
 export async function askTutorAction(input: {
+  autoSend?: boolean;
   chatTopic?: string;
   learnLanguage?: string;
   lessonCompleted?: boolean;
@@ -235,7 +249,7 @@ export async function askTutorAction(input: {
 }) {
   const supabase = await createAitalkServerClient();
   const text = input.text.trim();
-  if (!text) {
+  if (!text && !input.autoSend) {
     return { error: 'Please enter a sentence first.' };
   }
 
@@ -250,7 +264,7 @@ export async function askTutorAction(input: {
     lesson_mode: input.lessonMode,
     required_turns: input.requiredTurns ?? 4,
     success_criteria: input.successCriteria ?? [],
-    auto_send: false,
+    auto_send: input.autoSend ?? false,
     labels: {
       hint: 'Hint',
       you_can_say: 'You can say',

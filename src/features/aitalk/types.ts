@@ -227,3 +227,10 @@ export interface PracticeMessage {
   role: 'user' | 'assistant' | 'system';
   content: string;
 }
+
+export type PracticeMode = 'guided' | 'review' | 'free' | 'topic';
+
+export interface LessonPracticeConfig {
+  requiredTurns: number;
+  successCriteria: string[];
+}

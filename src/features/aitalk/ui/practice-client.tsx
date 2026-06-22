@@ -1,7 +1,10 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState, useTransition } from 'react';
-import { askTutorAction } from '@/features/aitalk/actions';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  askTutorAction,
+  completeLessonFromPracticeAction,
+} from '@/features/aitalk/actions';
 import { SUPABASE_ANON_KEY, SUPABASE_URL } from '@/features/aitalk/constants';
 import {
   buildAitalkSpeechSsml,
@@ -11,8 +14,19 @@ import {
   resolveAitalkVoiceName,
 } from '@/features/aitalk/lib/tts';
 import { createAitalkBrowserClient } from '@/features/aitalk/supabase/browser';
-import { Loader2, Mic, MicOff, Send, Volume2 } from 'lucide-react';
+import {
+  ArrowRight,
+  CheckCircle2,
+  Loader2,
+  MessageCircle,
+  Mic,
+  MicOff,
+  RotateCcw,
+  Send,
+  Volume2,
+} from 'lucide-react';
 
+import { Link } from '@/core/i18n/navigation';
 import { Button } from '@/shared/components/ui/button';
 import { Textarea } from '@/shared/components/ui/textarea';
 import { cn } from '@/shared/lib/utils';
@@ -26,6 +40,7 @@ import {
 import type {
   LessonListDetail,
   PracticeMessage,
+  PracticeMode,
   TopicExercise,
 } from '../types';
 
@@ -89,9 +104,21 @@ type SpeechInput = {
 
 type SpeakOptions = {
   interrupt?: boolean;
+  suppressError?: boolean;
 };
 
 type SpeakingPhase = 'loading' | 'playing';
+
+type TutorRaw = {
+  raw?: unknown;
+  data?: unknown;
+  response?: unknown;
+  task_passed?: unknown;
+  taskPassed?: unknown;
+  should_complete_lesson?: unknown;
+  shouldCompleteLesson?: unknown;
+  [key: string]: unknown;
+};
 
 function getErrorMessage(error: unknown) {
   if (error instanceof Error) return error.message;
@@ -131,6 +158,111 @@ function buildTopicTeacherHintInstruction(
     'If the user makes a mistake, briefly correct it in the coach hint and give one improved phrase.',
     'Always leave one clear question or opening for the user to answer next.',
   ].join(' ');
+}
+
+function parseTutorBoolean(value: unknown) {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'string') return value.toLowerCase() === 'true';
+  return false;
+}
+
+function readTutorBoolean(value: unknown, keys: string[]): boolean {
+  if (!value || typeof value !== 'object') return false;
+  const record = value as TutorRaw;
+
+  for (const key of keys) {
+    if (key in record && parseTutorBoolean(record[key])) return true;
+  }
+
+  return [record.raw, record.data, record.response].some((nested) =>
+    readTutorBoolean(nested, keys)
+  );
+}
+
+function isTutorCompletion(raw: unknown) {
+  return (
+    readTutorBoolean(raw, ['task_passed', 'taskPassed']) &&
+    readTutorBoolean(raw, ['should_complete_lesson', 'shouldCompleteLesson'])
+  );
+}
+
+function isPracticeMessage(value: unknown): value is PracticeMessage {
+  if (!value || typeof value !== 'object') return false;
+  const record = value as PracticeMessage;
+  return (
+    (record.role === 'assistant' ||
+      record.role === 'user' ||
+      record.role === 'system') &&
+    typeof record.content === 'string'
+  );
+}
+
+function loadStoredMessages(key: string) {
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return null;
+    return parsed.filter(isPracticeMessage);
+  } catch {
+    return null;
+  }
+}
+
+function saveStoredMessages(key: string, messages: PracticeMessage[]) {
+  try {
+    if (messages.length === 0) {
+      window.localStorage.removeItem(key);
+      return;
+    }
+    window.localStorage.setItem(key, JSON.stringify(messages));
+  } catch {
+    // Storage can be unavailable in private browsing; practice still works.
+  }
+}
+
+function buildLessonTutorTopic(title: string, practiceMode: PracticeMode) {
+  if (practiceMode === 'review') {
+    return [
+      title,
+      'This is a completed lesson review. Revisit the same goal, keep the structure guided, and do not mark the lesson complete again.',
+    ].join('\n\n');
+  }
+
+  if (practiceMode === 'free') {
+    return [
+      title,
+      'The learner already completed this lesson. Use the lesson as context, but keep the conversation open-ended and natural.',
+    ].join('\n\n');
+  }
+
+  return title;
+}
+
+function resolveLessonMode(practiceMode: PracticeMode) {
+  if (practiceMode === 'topic') return 'free_practice';
+  if (practiceMode === 'free') return 'free_practice_after_complete';
+  return 'guided_practice';
+}
+
+function getModeLabel(practiceMode: PracticeMode) {
+  if (practiceMode === 'topic') return 'Topic practice';
+  if (practiceMode === 'review') return 'Review';
+  if (practiceMode === 'free') return 'Free talk';
+  return 'Guided lesson';
+}
+
+function getModeDescription(practiceMode: PracticeMode) {
+  if (practiceMode === 'topic') {
+    return 'Stay on the selected topic and answer naturally with your tutor.';
+  }
+  if (practiceMode === 'review') {
+    return 'Review this completed lesson with a guided conversation.';
+  }
+  if (practiceMode === 'free') {
+    return 'Continue with an open conversation based on this lesson.';
+  }
+  return 'Follow the lesson goal. Your tutor will lead and complete it when you meet the target.';
 }
 
 function openTtsCache() {
@@ -184,46 +316,68 @@ export function PracticeClient({
   lesson,
   locale,
   nativeLanguage,
+  nextLessonId,
   planId,
+  practiceMode,
+  progressStatus,
+  requiredTurns,
   speechLocale,
   speechStyle,
+  successCriteria,
   teacherName,
   topic,
+  userId,
   voiceName,
 }: {
   learnLanguage: string;
   lesson: LessonListDetail | null;
   locale: string;
   nativeLanguage: string;
+  nextLessonId?: number;
   planId?: number;
+  practiceMode: PracticeMode;
+  progressStatus?: string;
+  requiredTurns: number;
   speechLocale: string;
   speechStyle?: string;
+  successCriteria: string[];
   teacherName?: string;
   topic?: TopicExercise | null;
+  userId?: string;
   voiceName?: string;
 }) {
-  const initialPrompt = useMemo(
-    () =>
-      topic
-        ? displayTopicPrompt(topic)
-        : 'Tell me one sentence in your target language. I will correct it and ask a follow-up.',
-    [topic]
+  const activeTopic = topic ?? null;
+  const activePracticeMode = activeTopic ? 'topic' : practiceMode;
+  const topicInitialPrompt = useMemo(
+    () => displayTopicPrompt(activeTopic),
+    [activeTopic]
   );
-  const [messages, setMessages] = useState<PracticeMessage[]>(() => [
-    {
-      role: 'assistant',
-      content: initialPrompt,
-    },
-  ]);
+  const [messages, setMessages] = useState<PracticeMessage[]>(() =>
+    activeTopic
+      ? [
+          {
+            role: 'assistant',
+            content: topicInitialPrompt,
+          },
+        ]
+      : []
+  );
   const [text, setText] = useState('');
   const [listening, setListening] = useState(false);
   const [speechSupported, setSpeechSupported] = useState(true);
   const [error, setError] = useState('');
+  const [autoStarting, setAutoStarting] = useState(false);
+  const [pending, setPending] = useState(false);
+  const [lessonCompleted, setLessonCompleted] = useState(
+    progressStatus === 'completed' || activePracticeMode !== 'guided'
+  );
+  const [lessonCompletedInSession, setLessonCompletedInSession] =
+    useState(false);
+  const [hydratedScope, setHydratedScope] = useState('');
   const [speakingMessageIndex, setSpeakingMessageIndex] = useState<
     number | null
   >(null);
   const [speakingPhase, setSpeakingPhase] = useState<SpeakingPhase>('loading');
-  const [pending, startTransition] = useTransition();
   const supabase = useMemo(() => createAitalkBrowserClient(), []);
   const recognitionRef = useRef<AitalkSpeechRecognition | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -236,31 +390,75 @@ export function PracticeClient({
   );
   const azureSpeakerRef = useRef<AzureSpeakerDestination | null>(null);
   const azureSynthesizerRef = useRef<AzureSpeechSynthesizer | null>(null);
+  const autoStartScopeRef = useRef('');
 
   const title = useMemo(
-    () => (topic ? displayTopicTitle(topic) : displayLessonTitle(lesson)),
-    [lesson, topic]
+    () =>
+      activeTopic ? displayTopicTitle(activeTopic) : displayLessonTitle(lesson),
+    [activeTopic, lesson]
   );
-  const tutorTopic = useMemo(() => {
-    if (!topic) return title;
+  const storageKey = useMemo(() => {
+    if (!userId || !lesson || activePracticeMode === 'topic') return '';
+    return `aitalk.practice.${userId}.lesson.${lesson.id}.${activePracticeMode}`;
+  }, [activePracticeMode, lesson, userId]);
+  const practiceScope = useMemo(() => {
+    if (activeTopic) return `topic.${activeTopic.id}`;
     return [
-      buildTopicTutorPrompt(topic),
+      'lesson',
+      lesson?.id ?? 'none',
+      activePracticeMode,
+      userId ?? 'anonymous',
+    ].join('.');
+  }, [activePracticeMode, activeTopic, lesson?.id, userId]);
+  const isLessonPractice = Boolean(lesson && activePracticeMode !== 'topic');
+  const modeLabel = getModeLabel(activePracticeMode);
+  const modeDescription = getModeDescription(activePracticeMode);
+  const tutorTopic = useMemo(() => {
+    if (!activeTopic) return buildLessonTutorTopic(title, activePracticeMode);
+    return [
+      buildTopicTutorPrompt(activeTopic),
       buildTopicTeacherHintInstruction(learnLanguage, nativeLanguage),
     ]
       .filter(Boolean)
       .join('\n\n');
-  }, [learnLanguage, nativeLanguage, title, topic]);
+  }, [activePracticeMode, activeTopic, learnLanguage, nativeLanguage, title]);
 
   useEffect(() => {
-    setMessages([
-      {
-        role: 'assistant',
-        content: initialPrompt,
-      },
-    ]);
     setText('');
     setError('');
-  }, [initialPrompt]);
+    setLessonCompleted(
+      progressStatus === 'completed' || activePracticeMode !== 'guided'
+    );
+    setLessonCompletedInSession(false);
+    autoStartScopeRef.current = '';
+
+    if (activeTopic) {
+      setMessages([
+        {
+          role: 'assistant',
+          content: topicInitialPrompt,
+        },
+      ]);
+      setHydratedScope(practiceScope);
+      return;
+    }
+
+    const storedMessages = storageKey ? loadStoredMessages(storageKey) : null;
+    setMessages(storedMessages?.length ? storedMessages : []);
+    setHydratedScope(practiceScope);
+  }, [
+    activePracticeMode,
+    practiceScope,
+    progressStatus,
+    storageKey,
+    activeTopic,
+    topicInitialPrompt,
+  ]);
+
+  useEffect(() => {
+    if (!storageKey || hydratedScope !== practiceScope) return;
+    saveStoredMessages(storageKey, messages);
+  }, [hydratedScope, messages, practiceScope, storageKey]);
 
   useEffect(() => {
     setSpeechSupported(Boolean(resolveSpeechRecognition()));
@@ -280,6 +478,82 @@ export function PracticeClient({
     const handle = setTimeout(preloadSpeechSdk, 1200);
     return () => clearTimeout(handle);
   }, []);
+
+  useEffect(() => {
+    if (!isLessonPractice) return;
+    if (hydratedScope !== practiceScope) return;
+    if (messages.length > 0) return;
+    if (autoStartScopeRef.current === practiceScope) return;
+
+    autoStartScopeRef.current = practiceScope;
+    let cancelled = false;
+    setAutoStarting(true);
+    setError('');
+
+    askTutorAction({
+      autoSend: true,
+      chatTopic: tutorTopic,
+      learnLanguage,
+      lessonCompleted: activePracticeMode !== 'guided',
+      lessonId: lesson?.id,
+      lessonMode: resolveLessonMode(activePracticeMode),
+      nativeLanguage,
+      planId: activePracticeMode === 'guided' ? planId : undefined,
+      requiredTurns,
+      successCriteria,
+      teacherName,
+      text: '',
+      locale,
+      messages: [],
+    })
+      .then((result) => {
+        if (cancelled) return;
+        if ('error' in result && result.error) {
+          setError(result.error);
+          return;
+        }
+
+        const assistantReply =
+          result.reply ||
+          'Hi. Let us start this lesson. Answer in one clear sentence.';
+        setMessages([
+          {
+            role: 'assistant',
+            content: assistantReply,
+          },
+        ]);
+        void speak(assistantReply, 0, {
+          interrupt: true,
+          suppressError: true,
+        });
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setError(getErrorMessage(error) || 'Tutor could not start the lesson.');
+      })
+      .finally(() => {
+        if (!cancelled) setAutoStarting(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    activePracticeMode,
+    hydratedScope,
+    isLessonPractice,
+    learnLanguage,
+    lesson?.id,
+    locale,
+    messages.length,
+    nativeLanguage,
+    planId,
+    practiceScope,
+    requiredTurns,
+    successCriteria,
+    teacherName,
+    tutorTopic,
+  ]);
 
   useEffect(() => {
     return () => {
@@ -431,7 +705,9 @@ export function PracticeClient({
           getErrorMessage(fallbackError) ||
           getErrorMessage(error) ||
           'Text-to-speech failed.';
-        setError(message);
+        if (!options.suppressError) {
+          setError(message);
+        }
       }
     } finally {
       if (speechRunIdRef.current === speechRunId) {
@@ -672,7 +948,7 @@ export function PracticeClient({
 
   function submit() {
     const nextText = text.trim();
-    if (!nextText || pending) return;
+    if (!nextText || pending || autoStarting) return;
     unlockAudioPlayback();
     const nextMessages: PracticeMessage[] = [
       ...messages,
@@ -682,17 +958,19 @@ export function PracticeClient({
     setText('');
     setError('');
 
-    startTransition(async () => {
+    setPending(true);
+    void (async () => {
       const result = await askTutorAction({
         chatTopic: tutorTopic,
         learnLanguage,
-        lessonCompleted: Boolean(topic),
-        lessonId: topic ? undefined : lesson?.id,
-        lessonMode: topic ? 'free_practice' : 'guided_practice',
+        lessonCompleted:
+          activePracticeMode !== 'guided' || Boolean(lessonCompleted),
+        lessonId: activeTopic ? undefined : lesson?.id,
+        lessonMode: resolveLessonMode(activePracticeMode),
         nativeLanguage,
-        planId: topic ? undefined : planId,
-        requiredTurns: 4,
-        successCriteria: topic ? TOPIC_SUCCESS_CRITERIA : [],
+        planId: activePracticeMode === 'guided' ? planId : undefined,
+        requiredTurns: activeTopic ? 4 : requiredTurns,
+        successCriteria: activeTopic ? TOPIC_SUCCESS_CRITERIA : successCriteria,
         teacherName,
         text: nextText,
         locale,
@@ -707,6 +985,7 @@ export function PracticeClient({
       const assistantReply =
         result.reply ||
         'Good. Try again with one more detail and clearer pronunciation.';
+      const assistantIndex = nextMessages.length;
       setMessages((current) => [
         ...current,
         {
@@ -714,24 +993,102 @@ export function PracticeClient({
           content: assistantReply,
         },
       ]);
-      void speak(assistantReply, nextMessages.length, { interrupt: true });
-    });
+
+      if (
+        activePracticeMode === 'guided' &&
+        lesson?.id &&
+        !lessonCompleted &&
+        isTutorCompletion(result.raw)
+      ) {
+        await completeLessonFromPracticeAction({
+          lessonId: lesson.id,
+          locale,
+          planId,
+        });
+        setLessonCompleted(true);
+        setLessonCompletedInSession(true);
+      }
+
+      void speak(assistantReply, assistantIndex, { interrupt: true });
+    })()
+      .catch((error) => {
+        setError(getErrorMessage(error) || 'Tutor is unavailable.');
+      })
+      .finally(() => {
+        setPending(false);
+      });
   }
 
   return (
     <div className="mx-auto flex min-h-[100dvh] max-w-5xl flex-col px-4 py-6 md:px-8 md:py-10">
       <div className="rounded-3xl border border-emerald-950/10 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-white/5">
         <div className="text-sm font-bold text-emerald-700 dark:text-emerald-300">
-          Guided speaking
+          {modeLabel}
         </div>
         <h1 className="mt-2 text-3xl font-black tracking-tight md:text-4xl">
           {title}
         </h1>
         <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-600 dark:text-zinc-300">
-          Use your microphone when available, or type. The tutor will respond
-          with practical corrections and a follow-up prompt.
+          {modeDescription}
         </p>
       </div>
+
+      {lessonCompletedInSession ? (
+        <div className="mt-5 rounded-3xl border border-emerald-200 bg-emerald-50 p-5 text-emerald-950 dark:border-emerald-400/30 dark:bg-emerald-500/10 dark:text-emerald-50">
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div className="flex items-start gap-3">
+              <CheckCircle2 className="mt-0.5 size-6 shrink-0 text-emerald-600 dark:text-emerald-300" />
+              <div>
+                <div className="text-lg font-black">Lesson completed</div>
+                <p className="mt-1 text-sm leading-6 text-emerald-900/75 dark:text-emerald-50/75">
+                  You reached the lesson target. Review it, keep talking, or
+                  continue to the next lesson.
+                </p>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                asChild
+                variant="outline"
+                className="h-10 rounded-xl border-emerald-300 bg-white text-emerald-800 hover:bg-emerald-100 dark:border-emerald-400/30 dark:bg-transparent dark:text-emerald-100 dark:hover:bg-emerald-500/10"
+              >
+                <Link href={`/practice?lesson=${lesson?.id}`}>
+                  <RotateCcw className="size-4" />
+                  Review again
+                </Link>
+              </Button>
+              <Button
+                asChild
+                variant="outline"
+                className="h-10 rounded-xl border-emerald-300 bg-white text-emerald-800 hover:bg-emerald-100 dark:border-emerald-400/30 dark:bg-transparent dark:text-emerald-100 dark:hover:bg-emerald-500/10"
+              >
+                <Link href={`/practice?lesson=${lesson?.id}&mode=free`}>
+                  <MessageCircle className="size-4" />
+                  Free talk
+                </Link>
+              </Button>
+              {nextLessonId ? (
+                <Button
+                  asChild
+                  className="h-10 rounded-xl bg-emerald-500 text-white hover:bg-emerald-600"
+                >
+                  <Link href={`/practice?lesson=${nextLessonId}`}>
+                    <ArrowRight className="size-4" />
+                    Next lesson
+                  </Link>
+                </Button>
+              ) : null}
+              <Button
+                asChild
+                variant="ghost"
+                className="h-10 rounded-xl text-emerald-800 hover:bg-emerald-100 dark:text-emerald-100 dark:hover:bg-emerald-500/10"
+              >
+                <Link href="/lessons">Back to lessons</Link>
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       <div className="mt-5 flex-1 rounded-3xl border border-emerald-950/10 bg-white p-4 dark:border-white/10 dark:bg-white/5">
         <div className="grid gap-3">
@@ -771,6 +1128,12 @@ export function PracticeClient({
               ) : null}
             </div>
           ))}
+          {autoStarting ? (
+            <div className="flex max-w-[82%] items-center gap-2 rounded-2xl bg-zinc-100 px-4 py-3 text-sm text-zinc-600 dark:bg-white/10 dark:text-zinc-300">
+              <Loader2 className="size-4 animate-spin" />
+              Tutor is starting the lesson
+            </div>
+          ) : null}
           {pending ? (
             <div className="flex max-w-[82%] items-center gap-2 rounded-2xl bg-zinc-100 px-4 py-3 text-sm text-zinc-600 dark:bg-white/10 dark:text-zinc-300">
               <Loader2 className="size-4 animate-spin" />
@@ -796,8 +1159,13 @@ export function PracticeClient({
           <Textarea
             value={text}
             onChange={(event) => setText(event.target.value)}
-            placeholder="Type or dictate your answer..."
+            placeholder={
+              autoStarting
+                ? 'Wait for the tutor to start...'
+                : 'Type or dictate your answer...'
+            }
             className="min-h-12 flex-1 resize-none rounded-2xl"
+            disabled={autoStarting || pending}
             onKeyDown={(event) => {
               if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
                 event.preventDefault();
@@ -811,6 +1179,7 @@ export function PracticeClient({
             size="icon"
             className="size-12 rounded-2xl"
             onClick={listening ? stopListening : startListening}
+            disabled={autoStarting || pending}
           >
             {listening ? (
               <MicOff className="size-5" />
@@ -822,7 +1191,7 @@ export function PracticeClient({
             type="button"
             className="size-12 rounded-2xl bg-emerald-500 text-white hover:bg-emerald-600"
             onClick={submit}
-            disabled={pending || !text.trim()}
+            disabled={pending || autoStarting || !text.trim()}
           >
             {pending ? (
               <Loader2 className="size-5 animate-spin" />
