@@ -704,7 +704,7 @@ export function PracticeClient({
                   : 'bg-zinc-100 text-zinc-900 dark:bg-white/10 dark:text-zinc-50'
               )}
             >
-              <div>{message.content}</div>
+              <div className="whitespace-pre-wrap">{message.content}</div>
               {message.role === 'assistant' ? (
                 <button
                   type="button"
