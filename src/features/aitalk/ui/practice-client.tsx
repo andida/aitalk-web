@@ -952,7 +952,7 @@ export function PracticeClient({
             works.
           </p>
         ) : null}
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2">
           <Textarea
             value={text}
             onChange={(event) => setText(event.target.value)}
@@ -961,10 +961,15 @@ export function PracticeClient({
                 ? 'Wait for the tutor to start...'
                 : 'Type or dictate your answer...'
             }
-            className="min-h-12 flex-1 resize-none rounded-2xl"
+            rows={1}
+            className="h-12 min-h-12 flex-1 resize-none overflow-y-auto rounded-2xl py-[11px] leading-6"
             disabled={autoStarting || pending}
             onKeyDown={(event) => {
-              if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+              if (
+                event.key === 'Enter' &&
+                !event.shiftKey &&
+                !event.nativeEvent.isComposing
+              ) {
                 event.preventDefault();
                 submit();
               }
@@ -986,6 +991,7 @@ export function PracticeClient({
           </Button>
           <Button
             type="button"
+            size="icon"
             className="size-12 rounded-2xl bg-emerald-500 text-white hover:bg-emerald-600"
             onClick={submit}
             disabled={pending || autoStarting || !text.trim()}
