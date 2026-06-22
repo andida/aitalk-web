@@ -129,6 +129,39 @@ export function displayTopicPrompt(topic: TopicExercise | null) {
   );
 }
 
+export function buildTopicTutorPrompt(topic: TopicExercise | null) {
+  if (!topic) {
+    return 'Open this prompt in practice and answer out loud.';
+  }
+
+  const lines = [
+    topic.desc ||
+      topic.description ||
+      topic.content ||
+      displayTopicTitle(topic),
+    topic.sub_title || topic.subTitle
+      ? `Topic subtitle: ${topic.sub_title || topic.subTitle}`
+      : '',
+    topic.continue_desc || topic.continueDesc
+      ? `Continue the conversation with: ${topic.continue_desc || topic.continueDesc}`
+      : '',
+    topic.tip_learn || topic.tipLearn
+      ? `Target-language tip: ${topic.tip_learn || topic.tipLearn}`
+      : '',
+    topic.tip_native || topic.tipNative
+      ? `Native-language tip: ${topic.tip_native || topic.tipNative}`
+      : '',
+    topic.learn_words || topic.learnWords
+      ? `Useful words: ${topic.learn_words || topic.learnWords}`
+      : '',
+    topic.learn_sentences || topic.learnSentences
+      ? `Useful sentences: ${topic.learn_sentences || topic.learnSentences}`
+      : '',
+  ];
+
+  return lines.filter(Boolean).join('\n');
+}
+
 export function getProfileCompleteness(profile: AitalkProfile | null) {
   if (!profile) return false;
   return Boolean(

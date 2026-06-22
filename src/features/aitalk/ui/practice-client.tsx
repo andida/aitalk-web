@@ -18,6 +18,7 @@ import { Textarea } from '@/shared/components/ui/textarea';
 import { cn } from '@/shared/lib/utils';
 
 import {
+  buildTopicTutorPrompt,
   displayLessonTitle,
   displayTopicPrompt,
   displayTopicTitle,
@@ -57,6 +58,13 @@ type AzureSpeakerDestination = InstanceType<
 const TTS_CACHE_DB = 'aitalk-tts-cache-v1';
 const TTS_CACHE_STORE = 'audio';
 const AZURE_SPEECH_TOKEN_REFRESH_BUFFER_MS = 60_000;
+
+const TOPIC_SUCCESS_CRITERIA = [
+  'Stay on the selected speaking topic.',
+  'Answer the teacher naturally in the target language.',
+  'Ask or answer at least one relevant follow-up question about the topic.',
+  'Do not switch to unrelated self-introduction practice unless the topic asks for it.',
+];
 
 type AzureSpeechTokenResponse = {
   error?: string;
@@ -103,6 +111,26 @@ function resolveSpeechRecognition() {
     speechWindow.webkitSpeechRecognition ||
     null
   );
+}
+
+function buildTopicTeacherHintInstruction(
+  learnLanguage: string,
+  nativeLanguage: string
+) {
+  return [
+    'TEACHER_HINT_MODE:',
+    'Act as both a realistic conversation partner and a speaking teacher.',
+    `The selected topic is the only speaking scenario. Keep the conversation on this topic unless the learner clearly changes it.`,
+    `In every assistant turn, first respond naturally to the learner previous message in ${learnLanguage}.`,
+    `Then continue the roleplay in ${learnLanguage} with exactly one clear follow-up question or one sentence opening that helps the learner keep speaking about the selected topic.`,
+    'Do not ignore the learner previous sentence or jump to an unrelated topic.',
+    `Then add a brief coach hint in ${nativeLanguage} using the label "Hint:".`,
+    `Under "You can say:", give one short sample reply in ${learnLanguage}.`,
+    'Keep the hint short and beginner-friendly. Do not translate the whole conversation.',
+    'Do not complete the task for the user; give sentence starters or reply options that help the user answer.',
+    'If the user makes a mistake, briefly correct it in the coach hint and give one improved phrase.',
+    'Always leave one clear question or opening for the user to answer next.',
+  ].join(' ');
 }
 
 function openTtsCache() {
@@ -213,6 +241,15 @@ export function PracticeClient({
     () => (topic ? displayTopicTitle(topic) : displayLessonTitle(lesson)),
     [lesson, topic]
   );
+  const tutorTopic = useMemo(() => {
+    if (!topic) return title;
+    return [
+      buildTopicTutorPrompt(topic),
+      buildTopicTeacherHintInstruction(learnLanguage, nativeLanguage),
+    ]
+      .filter(Boolean)
+      .join('\n\n');
+  }, [learnLanguage, nativeLanguage, title, topic]);
 
   useEffect(() => {
     setMessages([
@@ -647,11 +684,15 @@ export function PracticeClient({
 
     startTransition(async () => {
       const result = await askTutorAction({
-        chatTopic: title,
+        chatTopic: tutorTopic,
         learnLanguage,
-        lessonId: lesson?.id,
+        lessonCompleted: Boolean(topic),
+        lessonId: topic ? undefined : lesson?.id,
+        lessonMode: topic ? 'free_practice' : 'guided_practice',
         nativeLanguage,
-        planId,
+        planId: topic ? undefined : planId,
+        requiredTurns: 4,
+        successCriteria: topic ? TOPIC_SUCCESS_CRITERIA : [],
         teacherName,
         text: nextText,
         locale,

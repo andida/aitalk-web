@@ -221,9 +221,13 @@ export async function signOutAction(locale: string) {
 export async function askTutorAction(input: {
   chatTopic?: string;
   learnLanguage?: string;
+  lessonCompleted?: boolean;
   lessonId?: number;
+  lessonMode?: string;
   nativeLanguage?: string;
   planId?: number;
+  requiredTurns?: number;
+  successCriteria?: string[];
   teacherName?: string;
   text: string;
   locale?: string;
@@ -242,8 +246,10 @@ export async function askTutorAction(input: {
     plan_id: input.planId,
     teacher_name: input.teacherName,
     chat_topic: input.chatTopic,
-    required_turns: 4,
-    success_criteria: [],
+    lesson_completed: input.lessonCompleted ?? false,
+    lesson_mode: input.lessonMode,
+    required_turns: input.requiredTurns ?? 4,
+    success_criteria: input.successCriteria ?? [],
     auto_send: false,
     labels: {
       hint: 'Hint',

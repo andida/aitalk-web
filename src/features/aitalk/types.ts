@@ -48,9 +48,21 @@ export interface TopicExercise {
   id: number;
   title?: string | null;
   name?: string | null;
+  sub_title?: string | null;
+  subTitle?: string | null;
   desc?: string | null;
   description?: string | null;
   content?: string | null;
+  continue_desc?: string | null;
+  continueDesc?: string | null;
+  tip_native?: string | null;
+  tipNative?: string | null;
+  tip_learn?: string | null;
+  tipLearn?: string | null;
+  learn_words?: string | null;
+  learnWords?: string | null;
+  learn_sentences?: string | null;
+  learnSentences?: string | null;
   native_language?: string | null;
   status?: number | null;
 }

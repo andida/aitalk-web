@@ -34,9 +34,11 @@ export default async function PracticePage({
     getTeachers(supabase, profile?.learn_language || undefined).catch(() => []),
   ]);
   const lesson =
-    lessonId && Number.isFinite(lessonId)
-      ? await getLessonById(supabase, lessonId)
-      : (activePlan?.lesson ?? null);
+    topicId && Number.isFinite(topicId)
+      ? null
+      : lessonId && Number.isFinite(lessonId)
+        ? await getLessonById(supabase, lessonId)
+        : (activePlan?.lesson ?? null);
   const topic =
     topicId && Number.isFinite(topicId)
       ? await getTopicExerciseById(supabase, topicId).catch(() => null)
@@ -48,7 +50,7 @@ export default async function PracticePage({
       <PracticeClient
         lesson={lesson}
         locale={locale}
-        planId={activePlan?.plan?.id ?? undefined}
+        planId={topic ? undefined : (activePlan?.plan?.id ?? undefined)}
         topic={topic}
         learnLanguage={profile?.learn_language || 'English'}
         nativeLanguage={
