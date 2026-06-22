@@ -1,4 +1,12 @@
-import { BookOpen, Compass, Home, MessageCircle, Settings } from 'lucide-react';
+import {
+  Apple,
+  BookOpen,
+  Compass,
+  ExternalLink,
+  Home,
+  MessageCircle,
+  Settings,
+} from 'lucide-react';
 
 import { Link } from '@/core/i18n/navigation';
 import { Button } from '@/shared/components/ui/button';
@@ -11,6 +19,9 @@ const navItems = [
   { href: '/explore', label: 'Explore', icon: Compass },
   { href: '/me', label: 'Me', icon: Settings },
 ];
+
+const IOS_APP_STORE_URL =
+  'https://apps.apple.com/us/app/aitalk-ai-language-tutor/id6463466290';
 
 export function AitalkAppShell({
   children,
@@ -62,11 +73,28 @@ export function AitalkAppShell({
         </nav>
 
         <div className="mt-auto rounded-2xl border border-emerald-950/10 bg-emerald-50 p-4 dark:border-white/10 dark:bg-white/5">
-          <div className="text-sm font-bold">Realtime voice</div>
+          <div className="flex items-center gap-2 text-sm font-bold">
+            <Apple className="size-4" />
+            iOS App
+          </div>
           <p className="mt-1 text-sm leading-5 text-zinc-600 dark:text-zinc-300">
-            WebRTC call mode is reserved for the next iteration. V1 focuses on
-            lessons and guided speaking.
+            Download AITalk on iPhone and keep lessons, progress and practice
+            history synced with Web.
           </p>
+          <Button
+            asChild
+            className="mt-3 h-10 w-full rounded-xl bg-emerald-500 text-white hover:bg-emerald-600"
+          >
+            <a
+              href={IOS_APP_STORE_URL}
+              target="_blank"
+              rel="noreferrer"
+              aria-label="Download AITalk on the App Store"
+            >
+              Download on App Store
+              <ExternalLink className="size-4" />
+            </a>
+          </Button>
         </div>
       </aside>
 
