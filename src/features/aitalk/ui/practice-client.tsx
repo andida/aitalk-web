@@ -7,7 +7,6 @@ import {
 } from '@/features/aitalk/actions';
 import { SUPABASE_ANON_KEY, SUPABASE_URL } from '@/features/aitalk/constants';
 import {
-  buildAitalkSpeechSsml,
   DEFAULT_AITALK_SPEECH_STYLE,
   normalizeAitalkSpeechLang,
   prepareAitalkSpeechText,
@@ -62,17 +61,8 @@ type AudioContextWindow = Window &
     webkitAudioContext?: typeof AudioContext;
   };
 
-type SpeechSdkModule = typeof import('microsoft-cognitiveservices-speech-sdk');
-type AzureSpeechSynthesizer = InstanceType<
-  SpeechSdkModule['SpeechSynthesizer']
->;
-type AzureSpeakerDestination = InstanceType<
-  SpeechSdkModule['SpeakerAudioDestination']
->;
-
 const TTS_CACHE_DB = 'aitalk-tts-cache-v1';
 const TTS_CACHE_STORE = 'audio';
-const AZURE_SPEECH_TOKEN_REFRESH_BUFFER_MS = 60_000;
 
 const TOPIC_SUCCESS_CRITERIA = [
   'Stay on the selected speaking topic.',
@@ -80,19 +70,6 @@ const TOPIC_SUCCESS_CRITERIA = [
   'Ask or answer at least one relevant follow-up question about the topic.',
   'Do not switch to unrelated self-introduction practice unless the topic asks for it.',
 ];
-
-type AzureSpeechTokenResponse = {
-  error?: string;
-  expiresIn?: number;
-  region?: string;
-  token?: string;
-};
-
-type AzureSpeechToken = {
-  expiresAt: number;
-  region: string;
-  token: string;
-};
 
 type SpeechInput = {
   lang: string;
@@ -384,12 +361,6 @@ export function PracticeClient({
   const audioUrlRef = useRef('');
   const audioUnlockedRef = useRef(false);
   const speechRunIdRef = useRef(0);
-  const azureSpeechTokenRef = useRef<AzureSpeechToken | null>(null);
-  const azureSpeechSdkPromiseRef = useRef<Promise<SpeechSdkModule> | null>(
-    null
-  );
-  const azureSpeakerRef = useRef<AzureSpeakerDestination | null>(null);
-  const azureSynthesizerRef = useRef<AzureSpeechSynthesizer | null>(null);
   const autoStartScopeRef = useRef('');
 
   const title = useMemo(
@@ -462,21 +433,6 @@ export function PracticeClient({
 
   useEffect(() => {
     setSpeechSupported(Boolean(resolveSpeechRecognition()));
-  }, []);
-
-  useEffect(() => {
-    const preloadSpeechSdk = () => {
-      Promise.all([loadAzureSpeechSdk(), getAzureSpeechToken()]).catch(
-        () => undefined
-      );
-    };
-    if ('requestIdleCallback' in window) {
-      const handle = window.requestIdleCallback(preloadSpeechSdk);
-      return () => window.cancelIdleCallback(handle);
-    }
-
-    const handle = setTimeout(preloadSpeechSdk, 1200);
-    return () => clearTimeout(handle);
   }, []);
 
   useEffect(() => {
@@ -597,32 +553,16 @@ export function PracticeClient({
     setListening(false);
   }
 
-  function loadAzureSpeechSdk() {
-    azureSpeechSdkPromiseRef.current ??= import(
-      'microsoft-cognitiveservices-speech-sdk'
-    );
-    return azureSpeechSdkPromiseRef.current;
-  }
-
   function revokeCurrentAudioUrl() {
     if (!audioUrlRef.current) return;
     URL.revokeObjectURL(audioUrlRef.current);
     audioUrlRef.current = '';
   }
 
-  function closeAzureSpeech() {
-    azureSynthesizerRef.current?.close();
-    azureSynthesizerRef.current = null;
-    azureSpeakerRef.current?.pause();
-    azureSpeakerRef.current?.close();
-    azureSpeakerRef.current = null;
-  }
-
   function stopCurrentSpeech() {
     audioRef.current?.pause();
     audioRef.current = null;
     revokeCurrentAudioUrl();
-    closeAzureSpeech();
   }
 
   function unlockAudioPlayback() {
@@ -695,19 +635,16 @@ export function PracticeClient({
     };
 
     try {
-      await speakWithAzureSpeechSdk(input, markPlaybackStarted);
+      await playCachedOrGeneratedSpeechAudio(
+        input,
+        cacheKey,
+        markPlaybackStarted
+      );
     } catch (error: any) {
-      console.warn('aitalk_azure_speech_playback_failed', error);
-      try {
-        await playCachedSpeechAudio(input, cacheKey, markPlaybackStarted);
-      } catch (fallbackError) {
-        const message =
-          getErrorMessage(fallbackError) ||
-          getErrorMessage(error) ||
-          'Text-to-speech failed.';
-        if (!options.suppressError) {
-          setError(message);
-        }
+      console.warn('aitalk_speech_playback_failed', error);
+      const message = getErrorMessage(error) || 'Text-to-speech failed.';
+      if (!options.suppressError) {
+        setError(message);
       }
     } finally {
       if (speechRunIdRef.current === speechRunId) {
@@ -717,147 +654,7 @@ export function PracticeClient({
     }
   }
 
-  async function getAzureSpeechToken() {
-    const cached = azureSpeechTokenRef.current;
-    if (
-      cached &&
-      cached.expiresAt - AZURE_SPEECH_TOKEN_REFRESH_BUFFER_MS > Date.now()
-    ) {
-      return cached;
-    }
-
-    const response = await fetch('/api/aitalk/azure-speech-token', {
-      method: 'POST',
-    });
-    const data = (await response
-      .json()
-      .catch(() => null)) as AzureSpeechTokenResponse | null;
-    if (!response.ok) {
-      throw new Error(data?.error || 'Azure Speech failed.');
-    }
-    if (!data?.token || !data.region) {
-      throw new Error('Azure Speech token is invalid.');
-    }
-
-    const nextToken = {
-      token: data.token,
-      region: data.region,
-      expiresAt: Date.now() + (data.expiresIn || 540) * 1000,
-    };
-    azureSpeechTokenRef.current = nextToken;
-    return nextToken;
-  }
-
-  async function speakWithAzureSpeechSdk(
-    input: SpeechInput,
-    onPlaybackStart?: () => void
-  ) {
-    const [SpeechSDK, auth] = await Promise.all([
-      loadAzureSpeechSdk(),
-      getAzureSpeechToken(),
-    ]);
-
-    const speechConfig = SpeechSDK.SpeechConfig.fromAuthorizationToken(
-      auth.token,
-      auth.region
-    );
-    speechConfig.speechSynthesisLanguage = input.lang;
-    speechConfig.speechSynthesisVoiceName = input.name;
-    speechConfig.speechSynthesisOutputFormat =
-      SpeechSDK.SpeechSynthesisOutputFormat.Audio24Khz48KBitRateMonoMp3;
-
-    const speaker = new SpeechSDK.SpeakerAudioDestination();
-    const audioConfig = SpeechSDK.AudioConfig.fromSpeakerOutput(speaker);
-    const synthesizer = new SpeechSDK.SpeechSynthesizer(
-      speechConfig,
-      audioConfig
-    );
-    azureSpeakerRef.current = speaker;
-    azureSynthesizerRef.current = synthesizer;
-
-    const ssml = buildAitalkSpeechSsml(input);
-
-    await new Promise<void>((resolve, reject) => {
-      let settled = false;
-      let playbackStarted = false;
-      let playbackStartedAt = 0;
-      let playbackFallbackTimer: ReturnType<typeof setTimeout> | null = null;
-
-      const close = () => {
-        if (playbackFallbackTimer) {
-          clearTimeout(playbackFallbackTimer);
-          playbackFallbackTimer = null;
-        }
-        audioConfig.close();
-        if (azureSynthesizerRef.current === synthesizer) {
-          azureSynthesizerRef.current = null;
-        }
-        if (azureSpeakerRef.current === speaker) {
-          azureSpeakerRef.current = null;
-        }
-        synthesizer.close();
-      };
-      const resolveOnce = () => {
-        if (settled) return;
-        settled = true;
-        close();
-        resolve();
-      };
-      const rejectOnce = (error: unknown) => {
-        if (settled) return;
-        settled = true;
-        close();
-        reject(error);
-      };
-      const schedulePlaybackFallback = (audioDuration?: number) => {
-        if (settled) return;
-        if (playbackFallbackTimer) return;
-
-        const durationMs =
-          typeof audioDuration === 'number' && audioDuration > 0
-            ? audioDuration / 10_000
-            : Math.min(30_000, Math.max(2_500, input.text.length * 80));
-        const elapsedMs = playbackStartedAt
-          ? Date.now() - playbackStartedAt
-          : 0;
-        const remainingMs = Math.max(1_000, durationMs - elapsedMs + 1_500);
-        playbackFallbackTimer = setTimeout(resolveOnce, remainingMs);
-      };
-
-      speaker.onAudioStart = () => {
-        playbackStarted = true;
-        playbackStartedAt = Date.now();
-        onPlaybackStart?.();
-      };
-      speaker.onAudioEnd = () => {
-        resolveOnce();
-      };
-
-      synthesizer.speakSsmlAsync(
-        ssml,
-        (result) => {
-          if (result.reason === SpeechSDK.ResultReason.Canceled) {
-            rejectOnce(
-              new Error(result.errorDetails || 'Azure Speech failed.')
-            );
-            return;
-          }
-          if (!playbackStarted && !result.audioData?.byteLength) {
-            rejectOnce(new Error('Azure Speech returned empty audio.'));
-            return;
-          }
-          schedulePlaybackFallback(result.audioDuration);
-        },
-        (error) => {
-          rejectOnce(
-            new Error(getErrorMessage(error) || 'Azure Speech failed.')
-          );
-        }
-      );
-    });
-  }
-
-  async function playCachedSpeechAudio(
+  async function playCachedOrGeneratedSpeechAudio(
     input: SpeechInput,
     cacheKey: string,
     onPlaybackStart?: () => void
