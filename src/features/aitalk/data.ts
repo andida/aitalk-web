@@ -112,6 +112,23 @@ export function displayLessonSubtitle(
   );
 }
 
+export function displayTopicTitle(topic: TopicExercise | null) {
+  if (!topic) return 'Topic practice';
+  return topic.title || topic.name || `Topic ${topic.id}`;
+}
+
+export function displayTopicPrompt(topic: TopicExercise | null) {
+  if (!topic) {
+    return 'Open this prompt in practice and answer out loud.';
+  }
+  return (
+    topic.desc ||
+    topic.description ||
+    topic.content ||
+    'Open this prompt in practice and answer out loud.'
+  );
+}
+
 export function getProfileCompleteness(profile: AitalkProfile | null) {
   if (!profile) return false;
   return Boolean(
@@ -267,6 +284,18 @@ export async function getTopicExercises(
   }
 
   return asArray<TopicExercise>(data);
+}
+
+export async function getTopicExerciseById(supabase: Client, topicId: number) {
+  const { data, error } = await supabase
+    .from('topic_exercise_list')
+    .select('*')
+    .eq('id', topicId)
+    .eq('status', 1)
+    .limit(1);
+
+  if (error) throw error;
+  return first(asArray<TopicExercise>(data));
 }
 
 export async function getLessons(supabase: Client, language?: string | null) {

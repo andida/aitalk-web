@@ -17,8 +17,16 @@ import { Button } from '@/shared/components/ui/button';
 import { Textarea } from '@/shared/components/ui/textarea';
 import { cn } from '@/shared/lib/utils';
 
-import { displayLessonTitle } from '../data';
-import type { LessonListDetail, PracticeMessage } from '../types';
+import {
+  displayLessonTitle,
+  displayTopicPrompt,
+  displayTopicTitle,
+} from '../data';
+import type {
+  LessonListDetail,
+  PracticeMessage,
+  TopicExercise,
+} from '../types';
 
 type AitalkSpeechRecognitionConstructor = new () => AitalkSpeechRecognition;
 
@@ -152,6 +160,7 @@ export function PracticeClient({
   speechLocale,
   speechStyle,
   teacherName,
+  topic,
   voiceName,
 }: {
   learnLanguage: string;
@@ -162,13 +171,20 @@ export function PracticeClient({
   speechLocale: string;
   speechStyle?: string;
   teacherName?: string;
+  topic?: TopicExercise | null;
   voiceName?: string;
 }) {
-  const [messages, setMessages] = useState<PracticeMessage[]>([
+  const initialPrompt = useMemo(
+    () =>
+      topic
+        ? displayTopicPrompt(topic)
+        : 'Tell me one sentence in your target language. I will correct it and ask a follow-up.',
+    [topic]
+  );
+  const [messages, setMessages] = useState<PracticeMessage[]>(() => [
     {
       role: 'assistant',
-      content:
-        'Tell me one sentence in your target language. I will correct it and ask a follow-up.',
+      content: initialPrompt,
     },
   ]);
   const [text, setText] = useState('');
@@ -193,7 +209,21 @@ export function PracticeClient({
   const azureSpeakerRef = useRef<AzureSpeakerDestination | null>(null);
   const azureSynthesizerRef = useRef<AzureSpeechSynthesizer | null>(null);
 
-  const title = useMemo(() => displayLessonTitle(lesson), [lesson]);
+  const title = useMemo(
+    () => (topic ? displayTopicTitle(topic) : displayLessonTitle(lesson)),
+    [lesson, topic]
+  );
+
+  useEffect(() => {
+    setMessages([
+      {
+        role: 'assistant',
+        content: initialPrompt,
+      },
+    ]);
+    setText('');
+    setError('');
+  }, [initialPrompt]);
 
   useEffect(() => {
     setSpeechSupported(Boolean(resolveSpeechRecognition()));

@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
-import { MessageCircle, Sparkles } from 'lucide-react';
-
 import {
+  displayTopicPrompt,
+  displayTopicTitle,
   getProfile,
   getProfileCompleteness,
   getTeachers,
@@ -10,9 +10,11 @@ import {
 import { withLocale } from '@/features/aitalk/lib/paths';
 import { createAitalkServerClient } from '@/features/aitalk/supabase/server';
 import { AitalkAppShell } from '@/features/aitalk/ui/app-shell';
+import { MessageCircle, Sparkles } from 'lucide-react';
+
+import { Link } from '@/core/i18n/navigation';
 import { Button } from '@/shared/components/ui/button';
 import { Card, CardContent } from '@/shared/components/ui/card';
-import { Link } from '@/core/i18n/navigation';
 
 export default async function ExplorePage({
   params,
@@ -54,7 +56,9 @@ export default async function ExplorePage({
                 <CardContent className="px-5">
                   <div className="flex items-center gap-4">
                     <img
-                      src={teacher.avatar_url || teacher.avatarUrl || '/logo.svg'}
+                      src={
+                        teacher.avatar_url || teacher.avatarUrl || '/logo.svg'
+                      }
                       alt={teacher.name}
                       className="size-16 rounded-full object-cover"
                     />
@@ -84,23 +88,26 @@ export default async function ExplorePage({
           <h2 className="mb-4 text-xl font-black">Topics</h2>
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             {topics.map((topic) => (
-              <Card
+              <Link
                 key={topic.id}
-                className="rounded-3xl border-emerald-950/10 bg-white shadow-sm dark:border-white/10 dark:bg-white/5"
+                href={`/practice?topic=${topic.id}`}
+                className="group block rounded-3xl focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 focus-visible:outline-none dark:focus-visible:ring-offset-zinc-950"
               >
-                <CardContent className="px-5">
-                  <Sparkles className="size-6 text-emerald-600 dark:text-emerald-300" />
-                  <div className="mt-4 text-lg font-black">
-                    {topic.title || topic.name || `Topic ${topic.id}`}
-                  </div>
-                  <p className="mt-2 line-clamp-3 text-sm leading-6 text-zinc-600 dark:text-zinc-300">
-                    {topic.desc ||
-                      topic.description ||
-                      topic.content ||
-                      'Open this prompt in practice and answer out loud.'}
-                  </p>
-                </CardContent>
-              </Card>
+                <Card className="h-full rounded-3xl border-emerald-950/10 bg-white shadow-sm transition group-hover:-translate-y-0.5 group-hover:border-emerald-300 group-hover:shadow-md dark:border-white/10 dark:bg-white/5 dark:group-hover:border-emerald-400/40">
+                  <CardContent className="px-5">
+                    <Sparkles className="size-6 text-emerald-600 dark:text-emerald-300" />
+                    <div className="mt-4 text-lg font-black">
+                      {displayTopicTitle(topic)}
+                    </div>
+                    <p className="mt-2 line-clamp-3 text-sm leading-6 text-zinc-600 dark:text-zinc-300">
+                      {displayTopicPrompt(topic)}
+                    </p>
+                    <div className="mt-4 text-sm font-bold text-emerald-700 dark:text-emerald-300">
+                      Practice this topic
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
             ))}
           </div>
         </section>
