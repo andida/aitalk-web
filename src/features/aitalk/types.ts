@@ -140,10 +140,24 @@ export interface CourseLessonStepI18n {
   step_id: number;
   native_language?: string | null;
   title?: string | null;
+  instruction?: string | null;
   content?: JsonRecord | string | null;
   prompt?: string | null;
   example?: string | null;
 }
+
+export type CourseStepContent = {
+  outcome?: string;
+  scenario?: string;
+  success_criteria?: string[];
+  listen_text?: string[];
+  target_chunks?: string[];
+  sentence_patterns?: string[];
+  ai_role?: string;
+  user_goal?: string;
+  required_turns?: number;
+  [key: string]: unknown;
+};
 
 export interface UserLearningPlan {
   id: number;
@@ -181,10 +195,52 @@ export interface UserLessonProgress {
   plan_id?: number | null;
   status?: string | null;
   progress_percent?: number | null;
+  best_score?: number | null;
+  attempts_count?: number | null;
   started_at?: string | null;
   completed_at?: string | null;
   last_practiced_at?: string | null;
   updated_at?: string | null;
+}
+
+export type TutorCriteriaStatusValue = 'pending' | 'met' | 'missed';
+
+export interface TutorCriteriaStatus {
+  label: string;
+  status: TutorCriteriaStatusValue;
+  evidence?: string | null;
+}
+
+export interface TutorImprovedSentence {
+  original?: string | null;
+  improved: string;
+  reason?: string | null;
+}
+
+export interface TutorPracticeReport {
+  score: number;
+  criteria_status: TutorCriteriaStatus[];
+  target_chunks_used: string[];
+  feedback_summary?: string | null;
+  weak_points: string[];
+  review_items: string[];
+  improved_sentence?: TutorImprovedSentence | null;
+}
+
+export interface LessonAttempt {
+  id: number;
+  created_at?: string | null;
+  user_id: string;
+  lesson_id: number;
+  step_id?: number | null;
+  plan_id?: number | null;
+  practice_type: string;
+  transcript?: string | null;
+  audio_url?: string | null;
+  duration_seconds?: number | null;
+  scores?: JsonRecord | null;
+  feedback?: TutorPracticeReport | JsonRecord | null;
+  metadata?: JsonRecord | null;
 }
 
 export interface ActiveLearningPlan {

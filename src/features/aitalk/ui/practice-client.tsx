@@ -16,16 +16,19 @@ import { createAitalkBrowserClient } from '@/features/aitalk/supabase/browser';
 import {
   ArrowRight,
   CheckCircle2,
+  Circle,
   Loader2,
   MessageCircle,
   Mic,
   MicOff,
   RotateCcw,
   Send,
+  Sparkles,
   Volume2,
 } from 'lucide-react';
 
 import { Link } from '@/core/i18n/navigation';
+import { Badge } from '@/shared/components/ui/badge';
 import { Button } from '@/shared/components/ui/button';
 import { Textarea } from '@/shared/components/ui/textarea';
 import { cn } from '@/shared/lib/utils';
@@ -41,6 +44,9 @@ import type {
   PracticeMessage,
   PracticeMode,
   TopicExercise,
+  TutorCriteriaStatus,
+  TutorImprovedSentence,
+  TutorPracticeReport,
 } from '../types';
 
 type AitalkSpeechRecognitionConstructor = new () => AitalkSpeechRecognition;
@@ -163,6 +169,198 @@ function isTutorCompletion(raw: unknown) {
   );
 }
 
+function readTutorValue(value: unknown, keys: string[]): unknown {
+  if (!value || typeof value !== 'object') return undefined;
+  const record = value as TutorRaw;
+
+  for (const key of keys) {
+    if (key in record && record[key] !== undefined && record[key] !== null) {
+      return record[key];
+    }
+  }
+
+  for (const nested of [record.raw, record.data, record.response]) {
+    const nestedValue = readTutorValue(nested, keys);
+    if (nestedValue !== undefined) return nestedValue;
+  }
+
+  return undefined;
+}
+
+function readTutorString(raw: unknown, keys: string[]) {
+  const value = readTutorValue(raw, keys);
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function readTutorNumber(raw: unknown, keys: string[]) {
+  const value = readTutorValue(raw, keys);
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string') {
+    const parsed = Number.parseInt(value, 10);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return null;
+}
+
+function readTutorStringList(raw: unknown, keys: string[]) {
+  const value = readTutorValue(raw, keys);
+  if (!Array.isArray(value)) return [];
+  return value.map((item) => String(item || '').trim()).filter(Boolean);
+}
+
+function buildPendingCriteria(criteria: string[]): TutorCriteriaStatus[] {
+  return criteria.map((label) => ({
+    label,
+    status: 'pending',
+  }));
+}
+
+function normalizeCriteriaStatusValue(value: unknown) {
+  const status = String(value || '').toLowerCase();
+  if (
+    status === 'met' ||
+    status === 'done' ||
+    status === 'pass' ||
+    status === 'passed' ||
+    status === 'complete' ||
+    status === 'completed'
+  ) {
+    return 'met' as const;
+  }
+  if (
+    status === 'missed' ||
+    status === 'fail' ||
+    status === 'failed' ||
+    status === 'needs_work'
+  ) {
+    return 'missed' as const;
+  }
+  return 'pending' as const;
+}
+
+function parseCriteriaStatusList(value: unknown): TutorCriteriaStatus[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => {
+      if (!item || typeof item !== 'object') return null;
+      const record = item as Record<string, unknown>;
+      const label = String(record.label || record.criteria || '').trim();
+      if (!label) return null;
+      return {
+        label,
+        status: normalizeCriteriaStatusValue(record.status),
+        evidence:
+          typeof record.evidence === 'string' ? record.evidence.trim() : null,
+      } satisfies TutorCriteriaStatus;
+    })
+    .filter(Boolean) as TutorCriteriaStatus[];
+}
+
+function mergeCriteriaStatuses(
+  current: TutorCriteriaStatus[],
+  next: TutorCriteriaStatus[],
+  fallbackCriteria: string[]
+) {
+  const base = current.length
+    ? [...current]
+    : buildPendingCriteria(fallbackCriteria);
+  const indexByLabel = new Map(
+    base.map((item, index) => [item.label.toLowerCase(), index])
+  );
+
+  for (const item of next) {
+    const key = item.label.toLowerCase();
+    const index = indexByLabel.get(key);
+    if (index === undefined) {
+      indexByLabel.set(key, base.length);
+      base.push(item);
+      continue;
+    }
+    base[index] = {
+      ...base[index],
+      ...item,
+      status:
+        item.status === 'pending' && base[index].status === 'met'
+          ? 'met'
+          : item.status,
+    };
+  }
+
+  return base;
+}
+
+function readCriteriaStatusFromTutor(
+  raw: unknown,
+  fallbackCriteria: string[],
+  markAllMet = false
+) {
+  const rawList = parseCriteriaStatusList(
+    readTutorValue(raw, ['criteria_status', 'criteriaStatus'])
+  );
+  const fallback = fallbackCriteria.map((label) => ({
+    label,
+    status: markAllMet ? ('met' as const) : ('pending' as const),
+  }));
+  if (rawList.length === 0) return fallback;
+  return mergeCriteriaStatuses(fallback, rawList, fallbackCriteria);
+}
+
+function readImprovedSentence(raw: unknown): TutorImprovedSentence | null {
+  const value = readTutorValue(raw, ['improved_sentence', 'improvedSentence']);
+  if (!value || typeof value !== 'object') return null;
+  const record = value as Record<string, unknown>;
+  const improved =
+    typeof record.improved === 'string' ? record.improved.trim() : '';
+  if (!improved) return null;
+  return {
+    original:
+      typeof record.original === 'string' ? record.original.trim() : null,
+    improved,
+    reason: typeof record.reason === 'string' ? record.reason.trim() : null,
+  };
+}
+
+function buildPracticeReport(
+  raw: unknown,
+  criteriaStatus: TutorCriteriaStatus[],
+  completed: boolean
+): TutorPracticeReport {
+  const score = Math.round(
+    Math.min(
+      100,
+      Math.max(0, readTutorNumber(raw, ['score']) ?? (completed ? 82 : 0))
+    )
+  );
+  const feedbackSummary =
+    readTutorString(raw, ['feedback_summary', 'feedbackSummary']) ||
+    (completed
+      ? 'You completed the roleplay target. Review the weak points, then move to the next lesson.'
+      : 'Keep practicing the checklist items before completing this lesson.');
+
+  return {
+    score,
+    criteria_status: criteriaStatus,
+    target_chunks_used: readTutorStringList(raw, [
+      'target_chunks_used',
+      'targetChunksUsed',
+    ]),
+    feedback_summary: feedbackSummary,
+    weak_points: readTutorStringList(raw, ['weak_points', 'weakPoints']).slice(
+      0,
+      4
+    ),
+    review_items: readTutorStringList(raw, [
+      'review_items',
+      'reviewItems',
+    ]).slice(0, 5),
+    improved_sentence: readImprovedSentence(raw),
+  };
+}
+
+function criteriaProgress(criteriaStatus: TutorCriteriaStatus[]) {
+  return criteriaStatus.filter((item) => item.status === 'met').length;
+}
+
 function isPracticeMessage(value: unknown): value is PracticeMessage {
   if (!value || typeof value !== 'object') return false;
   const record = value as PracticeMessage;
@@ -198,22 +396,39 @@ function saveStoredMessages(key: string, messages: PracticeMessage[]) {
   }
 }
 
-function buildLessonTutorTopic(title: string, practiceMode: PracticeMode) {
+function buildLessonTutorTopic(
+  title: string,
+  practiceMode: PracticeMode,
+  lesson: LessonListDetail | null
+) {
+  const context = [
+    `Target-language lesson: ${title}`,
+    lesson?.lesson_subtitle || lesson?.subtitle
+      ? `Lesson goal: ${lesson.lesson_subtitle || lesson.subtitle}`
+      : '',
+    lesson?.lesson_words ? `Target chunks: ${lesson.lesson_words}` : '',
+    lesson?.lesson_sentence
+      ? `Sample sentences: ${lesson.lesson_sentence}`
+      : '',
+  ]
+    .filter(Boolean)
+    .join('\n');
+
   if (practiceMode === 'review') {
     return [
-      title,
+      context || title,
       'This is a completed lesson review. Revisit the same goal, keep the structure guided, and do not mark the lesson complete again.',
     ].join('\n\n');
   }
 
   if (practiceMode === 'free') {
     return [
-      title,
+      context || title,
       'The learner already completed this lesson. Use the lesson as context, but keep the conversation open-ended and natural.',
     ].join('\n\n');
   }
 
-  return title;
+  return context || title;
 }
 
 function resolveLessonMode(practiceMode: PracticeMode) {
@@ -350,6 +565,14 @@ export function PracticeClient({
   );
   const [lessonCompletedInSession, setLessonCompletedInSession] =
     useState(false);
+  const [criteriaStatus, setCriteriaStatus] = useState<TutorCriteriaStatus[]>(
+    () =>
+      activePracticeMode === 'guided'
+        ? buildPendingCriteria(successCriteria)
+        : []
+  );
+  const [practiceReport, setPracticeReport] =
+    useState<TutorPracticeReport | null>(null);
   const [hydratedScope, setHydratedScope] = useState('');
   const [speakingMessageIndex, setSpeakingMessageIndex] = useState<
     number | null
@@ -385,14 +608,23 @@ export function PracticeClient({
   const modeLabel = getModeLabel(activePracticeMode);
   const modeDescription = getModeDescription(activePracticeMode);
   const tutorTopic = useMemo(() => {
-    if (!activeTopic) return buildLessonTutorTopic(title, activePracticeMode);
+    if (!activeTopic) {
+      return buildLessonTutorTopic(title, activePracticeMode, lesson);
+    }
     return [
       buildTopicTutorPrompt(activeTopic),
       buildTopicTeacherHintInstruction(learnLanguage, nativeLanguage),
     ]
       .filter(Boolean)
       .join('\n\n');
-  }, [activePracticeMode, activeTopic, learnLanguage, nativeLanguage, title]);
+  }, [
+    activePracticeMode,
+    activeTopic,
+    learnLanguage,
+    lesson,
+    nativeLanguage,
+    title,
+  ]);
 
   useEffect(() => {
     setText('');
@@ -401,6 +633,12 @@ export function PracticeClient({
       progressStatus === 'completed' || activePracticeMode !== 'guided'
     );
     setLessonCompletedInSession(false);
+    setCriteriaStatus(
+      activePracticeMode === 'guided'
+        ? buildPendingCriteria(successCriteria)
+        : []
+    );
+    setPracticeReport(null);
     autoStartScopeRef.current = '';
 
     if (activeTopic) {
@@ -424,6 +662,7 @@ export function PracticeClient({
     storageKey,
     activeTopic,
     topicInitialPrompt,
+    successCriteria,
   ]);
 
   useEffect(() => {
@@ -783,6 +1022,13 @@ export function PracticeClient({
         result.reply ||
         'Good. Try again with one more detail and clearer pronunciation.';
       const assistantIndex = nextMessages.length;
+      const transcriptMessages: PracticeMessage[] = [
+        ...nextMessages,
+        {
+          role: 'assistant',
+          content: assistantReply,
+        },
+      ];
       setMessages((current) => [
         ...current,
         {
@@ -791,17 +1037,52 @@ export function PracticeClient({
         },
       ]);
 
-      if (
+      const tutorCompleted = Boolean(
         activePracticeMode === 'guided' &&
-        lesson?.id &&
-        !lessonCompleted &&
-        isTutorCompletion(result.raw)
-      ) {
+          lesson?.id &&
+          !lessonCompleted &&
+          isTutorCompletion(result.raw)
+      );
+      if (activePracticeMode === 'guided') {
+        const nextCriteriaStatus = readCriteriaStatusFromTutor(
+          result.raw,
+          successCriteria,
+          Boolean(tutorCompleted)
+        );
+        setCriteriaStatus((current) =>
+          mergeCriteriaStatuses(current, nextCriteriaStatus, successCriteria)
+        );
+      }
+
+      if (tutorCompleted && lesson?.id) {
+        const finalCriteriaStatus = readCriteriaStatusFromTutor(
+          result.raw,
+          successCriteria,
+          true
+        );
+        const report = buildPracticeReport(
+          result.raw,
+          finalCriteriaStatus,
+          true
+        );
         await completeLessonFromPracticeAction({
           lessonId: lesson.id,
           locale,
           planId,
+          attempt: {
+            transcript: JSON.stringify(transcriptMessages),
+            scores: { overall: report.score },
+            feedback: report,
+            metadata: {
+              lessonMode: resolveLessonMode(activePracticeMode),
+              requiredTurns,
+              successCriteria,
+              teacherName,
+            },
+          },
         });
+        setCriteriaStatus(finalCriteriaStatus);
+        setPracticeReport(report);
         setLessonCompleted(true);
         setLessonCompletedInSession(true);
       }
@@ -815,6 +1096,9 @@ export function PracticeClient({
         setPending(false);
       });
   }
+
+  const showGuidedChecklist =
+    activePracticeMode === 'guided' && criteriaStatus.length > 0;
 
   return (
     <div className="mx-auto flex min-h-[100dvh] max-w-5xl flex-col px-4 py-6 md:px-8 md:py-10">
@@ -830,61 +1114,17 @@ export function PracticeClient({
         </p>
       </div>
 
+      {showGuidedChecklist ? (
+        <LessonChecklist criteriaStatus={criteriaStatus} />
+      ) : null}
+
       {lessonCompletedInSession ? (
-        <div className="mt-5 rounded-3xl border border-emerald-200 bg-emerald-50 p-5 text-emerald-950 dark:border-emerald-400/30 dark:bg-emerald-500/10 dark:text-emerald-50">
-          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <div className="flex items-start gap-3">
-              <CheckCircle2 className="mt-0.5 size-6 shrink-0 text-emerald-600 dark:text-emerald-300" />
-              <div>
-                <div className="text-lg font-black">Lesson completed</div>
-                <p className="mt-1 text-sm leading-6 text-emerald-900/75 dark:text-emerald-50/75">
-                  You reached the lesson target. Review it, keep talking, or
-                  continue to the next lesson.
-                </p>
-              </div>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Button
-                asChild
-                variant="outline"
-                className="h-10 rounded-xl border-emerald-300 bg-white text-emerald-800 hover:bg-emerald-100 dark:border-emerald-400/30 dark:bg-transparent dark:text-emerald-100 dark:hover:bg-emerald-500/10"
-              >
-                <Link href={`/practice?lesson=${lesson?.id}`}>
-                  <RotateCcw className="size-4" />
-                  Review again
-                </Link>
-              </Button>
-              <Button
-                asChild
-                variant="outline"
-                className="h-10 rounded-xl border-emerald-300 bg-white text-emerald-800 hover:bg-emerald-100 dark:border-emerald-400/30 dark:bg-transparent dark:text-emerald-100 dark:hover:bg-emerald-500/10"
-              >
-                <Link href={`/practice?lesson=${lesson?.id}&mode=free`}>
-                  <MessageCircle className="size-4" />
-                  Free talk
-                </Link>
-              </Button>
-              {nextLessonId ? (
-                <Button
-                  asChild
-                  className="h-10 rounded-xl bg-emerald-500 text-white hover:bg-emerald-600"
-                >
-                  <Link href={`/practice?lesson=${nextLessonId}`}>
-                    <ArrowRight className="size-4" />
-                    Next lesson
-                  </Link>
-                </Button>
-              ) : null}
-              <Button
-                asChild
-                variant="ghost"
-                className="h-10 rounded-xl text-emerald-800 hover:bg-emerald-100 dark:text-emerald-100 dark:hover:bg-emerald-500/10"
-              >
-                <Link href="/lessons">Back to lessons</Link>
-              </Button>
-            </div>
-          </div>
-        </div>
+        <PracticeReportCard
+          criteriaStatus={criteriaStatus}
+          lessonId={lesson?.id}
+          nextLessonId={nextLessonId}
+          report={practiceReport}
+        />
       ) : null}
 
       <div className="mt-5 flex-1 rounded-3xl border border-emerald-950/10 bg-white p-4 dark:border-white/10 dark:bg-white/5">
@@ -1004,6 +1244,194 @@ export function PracticeClient({
           </Button>
         </div>
       </div>
+    </div>
+  );
+}
+
+function LessonChecklist({
+  criteriaStatus,
+}: {
+  criteriaStatus: TutorCriteriaStatus[];
+}) {
+  const metCount = criteriaProgress(criteriaStatus);
+  const total = criteriaStatus.length;
+
+  return (
+    <section className="mt-5 rounded-3xl border border-emerald-950/10 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-white/5">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-2 text-sm font-black text-emerald-700 dark:text-emerald-300">
+          <Sparkles className="size-4" />
+          Lesson checklist
+        </div>
+        <Badge
+          variant="secondary"
+          className="w-fit rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-100"
+        >
+          {metCount}/{total} done
+        </Badge>
+      </div>
+      <div className="mt-4 grid gap-2">
+        {criteriaStatus.map((item) => (
+          <div
+            key={item.label}
+            className={cn(
+              'flex items-start gap-3 rounded-2xl border px-3 py-2 text-sm leading-5',
+              item.status === 'met'
+                ? 'border-emerald-200 bg-emerald-50 text-emerald-950 dark:border-emerald-400/30 dark:bg-emerald-500/10 dark:text-emerald-50'
+                : item.status === 'missed'
+                  ? 'border-amber-200 bg-amber-50 text-amber-950 dark:border-amber-400/30 dark:bg-amber-500/10 dark:text-amber-50'
+                  : 'border-zinc-200 bg-zinc-50 text-zinc-700 dark:border-white/10 dark:bg-white/5 dark:text-zinc-200'
+            )}
+          >
+            {item.status === 'met' ? (
+              <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-emerald-600 dark:text-emerald-300" />
+            ) : (
+              <Circle className="mt-0.5 size-4 shrink-0 text-current opacity-60" />
+            )}
+            <span className="min-w-0 flex-1">
+              <span className="font-bold">{item.label}</span>
+              {item.evidence ? (
+                <span className="mt-1 block text-xs opacity-75">
+                  {item.evidence}
+                </span>
+              ) : null}
+            </span>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function PracticeReportCard({
+  criteriaStatus,
+  lessonId,
+  nextLessonId,
+  report,
+}: {
+  criteriaStatus: TutorCriteriaStatus[];
+  lessonId?: number;
+  nextLessonId?: number;
+  report: TutorPracticeReport | null;
+}) {
+  const score = report?.score ?? 82;
+  const metItems = criteriaStatus.filter((item) => item.status === 'met');
+  const weakPoints = report?.weak_points ?? [];
+  const reviewItems = report?.review_items ?? [];
+  const targetChunks = report?.target_chunks_used ?? [];
+
+  return (
+    <section className="mt-5 rounded-3xl border border-emerald-200 bg-emerald-50 p-5 text-emerald-950 dark:border-emerald-400/30 dark:bg-emerald-500/10 dark:text-emerald-50">
+      <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+        <div className="flex items-start gap-3">
+          <CheckCircle2 className="mt-0.5 size-6 shrink-0 text-emerald-600 dark:text-emerald-300" />
+          <div>
+            <div className="text-lg font-black">AI speaking report</div>
+            <p className="mt-1 max-w-2xl text-sm leading-6 text-emerald-900/75 dark:text-emerald-50/75">
+              {report?.feedback_summary ||
+                'You reached the lesson target. Review it, keep talking, or continue to the next lesson.'}
+            </p>
+          </div>
+        </div>
+        <div className="shrink-0 text-left md:text-right">
+          <div className="text-3xl font-black">{score}</div>
+          <div className="text-xs font-bold text-emerald-900/60 uppercase dark:text-emerald-50/60">
+            overall score
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-5 grid gap-4 border-t border-emerald-200 pt-4 md:grid-cols-2 dark:border-emerald-400/20">
+        <ReportList
+          title="Completed goals"
+          items={metItems.map((item) => item.label)}
+        />
+        <ReportList title="Review items" items={reviewItems} />
+        <ReportList title="Weak points" items={weakPoints} />
+        <ReportList title="Target chunks used" items={targetChunks} />
+      </div>
+
+      {report?.improved_sentence?.improved ? (
+        <div className="mt-4 border-t border-emerald-200 pt-4 text-sm leading-6 dark:border-emerald-400/20">
+          {report.improved_sentence.original ? (
+            <div className="text-emerald-900/70 dark:text-emerald-50/70">
+              Original: {report.improved_sentence.original}
+            </div>
+          ) : null}
+          <div className="font-bold">
+            Better: {report.improved_sentence.improved}
+          </div>
+          {report.improved_sentence.reason ? (
+            <div className="text-emerald-900/70 dark:text-emerald-50/70">
+              Why: {report.improved_sentence.reason}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
+      <div className="mt-5 flex flex-wrap gap-2 border-t border-emerald-200 pt-4 dark:border-emerald-400/20">
+        {lessonId ? (
+          <>
+            <Button
+              asChild
+              variant="outline"
+              className="h-10 rounded-xl border-emerald-300 bg-white text-emerald-800 hover:bg-emerald-100 dark:border-emerald-400/30 dark:bg-transparent dark:text-emerald-100 dark:hover:bg-emerald-500/10"
+            >
+              <Link href={`/practice?lesson=${lessonId}`}>
+                <RotateCcw className="size-4" />
+                Review again
+              </Link>
+            </Button>
+            <Button
+              asChild
+              variant="outline"
+              className="h-10 rounded-xl border-emerald-300 bg-white text-emerald-800 hover:bg-emerald-100 dark:border-emerald-400/30 dark:bg-transparent dark:text-emerald-100 dark:hover:bg-emerald-500/10"
+            >
+              <Link href={`/practice?lesson=${lessonId}&mode=free`}>
+                <MessageCircle className="size-4" />
+                Free talk
+              </Link>
+            </Button>
+          </>
+        ) : null}
+        {nextLessonId ? (
+          <Button
+            asChild
+            className="h-10 rounded-xl bg-emerald-500 text-white hover:bg-emerald-600"
+          >
+            <Link href={`/practice?lesson=${nextLessonId}`}>
+              <ArrowRight className="size-4" />
+              Next lesson
+            </Link>
+          </Button>
+        ) : null}
+        <Button
+          asChild
+          variant="ghost"
+          className="h-10 rounded-xl text-emerald-800 hover:bg-emerald-100 dark:text-emerald-100 dark:hover:bg-emerald-500/10"
+        >
+          <Link href="/lessons">Back to lessons</Link>
+        </Button>
+      </div>
+    </section>
+  );
+}
+
+function ReportList({ title, items }: { title: string; items: string[] }) {
+  if (items.length === 0) return null;
+  return (
+    <div>
+      <div className="text-xs font-black text-emerald-900/60 uppercase dark:text-emerald-50/60">
+        {title}
+      </div>
+      <ul className="mt-2 grid gap-1 text-sm leading-6">
+        {items.map((item) => (
+          <li key={item} className="flex items-start gap-2">
+            <CheckCircle2 className="mt-1 size-3.5 shrink-0 text-emerald-600 dark:text-emerald-300" />
+            <span>{item}</span>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

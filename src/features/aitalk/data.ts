@@ -15,10 +15,13 @@ import type {
   CourseLessonI18n,
   CourseLessonStep,
   CourseLessonStepI18n,
+  JsonRecord,
+  LessonAttempt,
   LessonListDetail,
   LessonPracticeConfig,
   OnboardingInput,
   TopicExercise,
+  TutorPracticeReport,
   UserLearningPlan,
   UserLearningPlanItem,
   UserLessonProgress,
@@ -571,6 +574,61 @@ export async function getLessonProgress(supabase: Client, lessonId: number) {
   return first(asArray<UserLessonProgress>(data));
 }
 
+export async function getLatestLessonAttempt(
+  supabase: Client,
+  lessonId: number
+) {
+  const user = await requireUser(supabase);
+  const { data, error } = await supabase
+    .from('lesson_attempts')
+    .select('*')
+    .eq('user_id', user.id)
+    .eq('lesson_id', lessonId)
+    .order('created_at', { ascending: false })
+    .limit(1);
+  if (error) throw error;
+  return first(asArray<LessonAttempt>(data));
+}
+
+export async function insertLessonAttempt(
+  supabase: Client,
+  input: {
+    lessonId: number;
+    stepId?: number | null;
+    planId?: number | null;
+    practiceType: string;
+    transcript?: string | null;
+    audioUrl?: string | null;
+    durationSeconds?: number | null;
+    scores?: JsonRecord | null;
+    feedback?: TutorPracticeReport | JsonRecord | null;
+    metadata?: JsonRecord | null;
+  }
+) {
+  const user = await requireUser(supabase);
+  const payload: Record<string, any> = {
+    user_id: user.id,
+    lesson_id: input.lessonId,
+    practice_type: input.practiceType,
+    transcript: input.transcript ?? null,
+    audio_url: input.audioUrl ?? null,
+    duration_seconds: input.durationSeconds ?? null,
+    scores: input.scores ?? {},
+    feedback: input.feedback ?? {},
+    metadata: input.metadata ?? {},
+  };
+  if (input.stepId) payload.step_id = input.stepId;
+  if (input.planId) payload.plan_id = input.planId;
+
+  const { data, error } = await supabase
+    .from('lesson_attempts')
+    .insert(payload)
+    .select()
+    .limit(1);
+  if (error) throw error;
+  return first(asArray<LessonAttempt>(data));
+}
+
 export async function startLessonProgress(
   supabase: Client,
   lessonId: number,
@@ -615,13 +673,21 @@ export async function startLessonProgress(
 export async function completeLessonProgress(
   supabase: Client,
   lessonId: number,
-  planId?: number | null
+  planId?: number | null,
+  options?: {
+    score?: number | null;
+    countAttempt?: boolean;
+  }
 ) {
   const user = await requireUser(supabase);
   const existing = await getLessonProgress(supabase, lessonId).catch(
     () => null
   );
   const now = new Date().toISOString();
+  const score =
+    typeof options?.score === 'number' && Number.isFinite(options.score)
+      ? Math.round(Math.min(100, Math.max(0, options.score)))
+      : null;
   const payload: Record<string, any> = {
     user_id: user.id,
     lesson_id: lessonId,
@@ -633,6 +699,12 @@ export async function completeLessonProgress(
     updated_at: now,
   };
   if (planId) payload.plan_id = planId;
+  if (score !== null) {
+    payload.best_score = Math.max(existing?.best_score ?? 0, score);
+  }
+  if (options?.countAttempt) {
+    payload.attempts_count = (existing?.attempts_count ?? 0) + 1;
+  }
 
   const { data, error } = await supabase
     .from('user_lesson_progress')

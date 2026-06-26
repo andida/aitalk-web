@@ -12,6 +12,7 @@ import {
   completeLessonProgress,
   createOrUpdateLearningPlan,
   getTextSpeech,
+  insertLessonAttempt,
   invokeCourseTutorAgent,
   startLessonProgress,
   updateCurrentLearningPlanLesson,
@@ -19,7 +20,17 @@ import {
 } from './data';
 import { withLocale } from './lib/paths';
 import { createAitalkServerClient } from './supabase/server';
-import type { OnboardingInput } from './types';
+import type { JsonRecord, OnboardingInput, TutorPracticeReport } from './types';
+
+type CompleteLessonAttemptInput = {
+  stepId?: number | null;
+  transcript?: string | null;
+  audioUrl?: string | null;
+  durationSeconds?: number | null;
+  scores?: JsonRecord | null;
+  feedback?: TutorPracticeReport | JsonRecord | null;
+  metadata?: JsonRecord | null;
+};
 
 const WINDOWS_1252_REVERSE_MAP: Record<number, number> = {
   0x20ac: 0x80,
@@ -216,9 +227,32 @@ export async function completeLessonFromPracticeAction(input: {
   lessonId: number;
   locale: string;
   planId?: number | null;
+  attempt?: CompleteLessonAttemptInput | null;
 }) {
   const supabase = await createAitalkServerClient();
-  await completeLessonProgress(supabase, input.lessonId, input.planId);
+  let score: number | null = null;
+  if (input.attempt) {
+    await insertLessonAttempt(supabase, {
+      lessonId: input.lessonId,
+      stepId: input.attempt.stepId,
+      planId: input.planId,
+      practiceType: 'guided_roleplay',
+      transcript: input.attempt.transcript,
+      audioUrl: input.attempt.audioUrl,
+      durationSeconds: input.attempt.durationSeconds,
+      scores: input.attempt.scores,
+      feedback: input.attempt.feedback,
+      metadata: input.attempt.metadata,
+    });
+    const rawScore = input.attempt.scores?.overall;
+    score = typeof rawScore === 'number' ? rawScore : Number(rawScore);
+    if (!Number.isFinite(score)) score = null;
+  }
+
+  await completeLessonProgress(supabase, input.lessonId, input.planId, {
+    score,
+    countAttempt: Boolean(input.attempt),
+  });
   revalidatePath(withLocale('/lessons', input.locale));
   revalidatePath(withLocale(`/lessons/${input.lessonId}`, input.locale));
   revalidatePath(withLocale('/app', input.locale));
