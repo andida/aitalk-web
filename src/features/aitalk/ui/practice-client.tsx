@@ -49,19 +49,6 @@ import type {
   TutorPracticeReport,
 } from '../types';
 
-type AitalkSpeechRecognitionConstructor = new () => AitalkSpeechRecognition;
-
-type AitalkSpeechRecognition = {
-  lang: string;
-  interimResults: boolean;
-  continuous: boolean;
-  onresult: ((event: any) => void) | null;
-  onerror: ((event: any) => void) | null;
-  onend: ((event: Event) => void) | null;
-  start: () => void;
-  stop: () => void;
-};
-
 type AudioContextWindow = Window &
   typeof globalThis & {
     webkitAudioContext?: typeof AudioContext;
@@ -91,6 +78,7 @@ type SpeakOptions = {
 };
 
 type SpeakingPhase = 'loading' | 'playing';
+type RecordingStatus = 'idle' | 'recording' | 'transcribing';
 
 type TutorRaw = {
   raw?: unknown;
@@ -107,20 +95,6 @@ function getErrorMessage(error: unknown) {
   if (error instanceof Error) return error.message;
   if (typeof error === 'string') return error;
   return '';
-}
-
-function resolveSpeechRecognition() {
-  if (typeof window === 'undefined') return null;
-  const speechWindow = window as Window &
-    typeof globalThis & {
-      SpeechRecognition?: AitalkSpeechRecognitionConstructor;
-      webkitSpeechRecognition?: AitalkSpeechRecognitionConstructor;
-    };
-  return (
-    speechWindow.SpeechRecognition ||
-    speechWindow.webkitSpeechRecognition ||
-    null
-  );
 }
 
 function buildTopicTeacherHintInstruction(
@@ -503,6 +477,34 @@ async function digestCacheKey(value: string) {
     .join('');
 }
 
+async function parseTranscriptResponse(response: Response) {
+  const data = await response.json().catch(() => null);
+  return {
+    text: typeof data?.text === 'string' ? data.text.trim() : '',
+    raw: data,
+  };
+}
+
+function buildSpeechTranscriptFormData({
+  audioBlob,
+  language,
+  prompt,
+}: {
+  audioBlob: Blob;
+  language: string;
+  prompt: string;
+}) {
+  const formData = new FormData();
+  formData.set(
+    'file',
+    audioBlob,
+    audioBlob.type.includes('mp4') ? 'speech.mp4' : 'speech.webm'
+  );
+  if (language) formData.set('language', language);
+  if (prompt) formData.set('prompt', prompt);
+  return formData;
+}
+
 export function PracticeClient({
   learnLanguage,
   lesson,
@@ -555,7 +557,8 @@ export function PracticeClient({
       : []
   );
   const [text, setText] = useState('');
-  const [listening, setListening] = useState(false);
+  const [recordingStatus, setRecordingStatus] =
+    useState<RecordingStatus>('idle');
   const [speechSupported, setSpeechSupported] = useState(true);
   const [error, setError] = useState('');
   const [autoStarting, setAutoStarting] = useState(false);
@@ -579,7 +582,9 @@ export function PracticeClient({
   >(null);
   const [speakingPhase, setSpeakingPhase] = useState<SpeakingPhase>('loading');
   const supabase = useMemo(() => createAitalkBrowserClient(), []);
-  const recognitionRef = useRef<AitalkSpeechRecognition | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recordingStreamRef = useRef<MediaStream | null>(null);
+  const recordingChunksRef = useRef<BlobPart[]>([]);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const audioUrlRef = useRef('');
   const audioUnlockedRef = useRef(false);
@@ -671,7 +676,11 @@ export function PracticeClient({
   }, [hydratedScope, messages, practiceScope, storageKey]);
 
   useEffect(() => {
-    setSpeechSupported(Boolean(resolveSpeechRecognition()));
+    setSpeechSupported(
+      typeof navigator !== 'undefined' &&
+        Boolean(navigator.mediaDevices?.getUserMedia) &&
+        typeof MediaRecorder !== 'undefined'
+    );
   }, []);
 
   useEffect(() => {
@@ -752,44 +761,120 @@ export function PracticeClient({
 
   useEffect(() => {
     return () => {
+      stopRecordingStream();
       stopCurrentSpeech();
     };
   }, []);
 
-  function startListening() {
-    const Recognition = resolveSpeechRecognition();
-    if (!Recognition) {
+  async function startListening() {
+    if (
+      !navigator.mediaDevices?.getUserMedia ||
+      typeof MediaRecorder === 'undefined'
+    ) {
       setSpeechSupported(false);
       return;
     }
 
-    const recognition = new Recognition();
-    recognition.lang = speechLocale || 'en-US';
-    recognition.interimResults = true;
-    recognition.continuous = false;
-    recognition.onresult = (event: any) => {
-      const transcript = Array.from(event.results)
-        .map((result: any) => result[0]?.transcript)
-        .filter(Boolean)
-        .join(' ');
-      setText(transcript);
-    };
-    recognition.onerror = () => {
-      setError('Speech recognition failed. You can keep typing instead.');
-      setListening(false);
-    };
-    recognition.onend = () => {
-      setListening(false);
-    };
-    recognitionRef.current = recognition;
     setError('');
-    setListening(true);
-    recognition.start();
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      recordingStreamRef.current = stream;
+      recordingChunksRef.current = [];
+      const mimeType = resolveRecordingMimeType();
+      const recorder = new MediaRecorder(
+        stream,
+        mimeType ? { mimeType } : undefined
+      );
+      mediaRecorderRef.current = recorder;
+
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          recordingChunksRef.current.push(event.data);
+        }
+      };
+      recorder.onerror = () => {
+        setError('Recording failed. You can keep typing instead.');
+        setRecordingStatus('idle');
+        stopRecordingStream();
+      };
+      recorder.onstop = () => {
+        const audioBlob = new Blob(recordingChunksRef.current, {
+          type: recorder.mimeType || mimeType || 'audio/webm',
+        });
+        recordingChunksRef.current = [];
+        stopRecordingStream();
+        void transcribeAudio(audioBlob);
+      };
+
+      recorder.start();
+      setRecordingStatus('recording');
+    } catch (error) {
+      setError(
+        getErrorMessage(error) ||
+          'Microphone permission was denied. You can keep typing instead.'
+      );
+      setRecordingStatus('idle');
+      stopRecordingStream();
+    }
   }
 
   function stopListening() {
-    recognitionRef.current?.stop();
-    setListening(false);
+    const recorder = mediaRecorderRef.current;
+    if (!recorder || recorder.state === 'inactive') {
+      stopRecordingStream();
+      setRecordingStatus('idle');
+      return;
+    }
+    setRecordingStatus('transcribing');
+    recorder.stop();
+  }
+
+  function stopRecordingStream() {
+    recordingStreamRef.current?.getTracks().forEach((track) => track.stop());
+    recordingStreamRef.current = null;
+    mediaRecorderRef.current = null;
+  }
+
+  function resolveRecordingMimeType() {
+    const supportedTypes = [
+      'audio/webm;codecs=opus',
+      'audio/webm',
+      'audio/mp4',
+      'audio/mpeg',
+    ];
+    return (
+      supportedTypes.find((type) => MediaRecorder.isTypeSupported(type)) || ''
+    );
+  }
+
+  function resolveSttLanguage() {
+    const lang = normalizeAitalkSpeechLang(speechLocale);
+    return lang.split('-')[0]?.toLowerCase() || '';
+  }
+
+  async function transcribeAudio(audioBlob: Blob) {
+    if (audioBlob.size === 0) {
+      setError('Recording is empty. Please try again.');
+      setRecordingStatus('idle');
+      return;
+    }
+
+    setRecordingStatus('transcribing');
+    setError('');
+    try {
+      const result = await fetchSpeechTranscript(audioBlob);
+      if (!result.text) {
+        setError('No speech was detected. Please try again or type instead.');
+        return;
+      }
+      setText((current) =>
+        current.trim() ? `${current.trim()} ${result.text}` : result.text
+      );
+    } catch (error) {
+      setError(getErrorMessage(error) || 'Speech transcription failed.');
+    } finally {
+      setRecordingStatus('idle');
+    }
   }
 
   function revokeCurrentAudioUrl() {
@@ -982,9 +1067,63 @@ export function PracticeClient({
     return response.blob();
   }
 
+  async function fetchSpeechTranscript(audioBlob: Blob) {
+    const language = resolveSttLanguage();
+    const prompt = title ? `AITalk English speaking lesson: ${title}` : '';
+
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
+    if (session?.access_token) {
+      const directResponse = await fetch(
+        `${SUPABASE_URL.replace(/\/$/, '')}/functions/v1/speech-to-text`,
+        {
+          method: 'POST',
+          headers: {
+            apikey: SUPABASE_ANON_KEY,
+            Authorization: `Bearer ${session.access_token}`,
+          },
+          body: buildSpeechTranscriptFormData({
+            audioBlob,
+            language,
+            prompt,
+          }),
+        }
+      );
+
+      if (directResponse.ok) {
+        return parseTranscriptResponse(directResponse);
+      }
+      const errorData = await directResponse.json().catch(() => null);
+      console.warn('aitalk_speech_to_text_direct_failed', {
+        status: directResponse.status,
+        error: errorData?.error || errorData?.message,
+      });
+    }
+
+    const response = await fetch('/api/aitalk/speech-to-text', {
+      method: 'POST',
+      body: buildSpeechTranscriptFormData({
+        audioBlob,
+        language,
+        prompt,
+      }),
+    });
+
+    if (!response.ok) {
+      const data = await response.json().catch(() => null);
+      throw new Error(data?.error || 'Speech transcription failed.');
+    }
+
+    return parseTranscriptResponse(response);
+  }
+
   function submit() {
     const nextText = text.trim();
-    if (!nextText || pending || autoStarting) return;
+    if (!nextText || pending || autoStarting || recordingStatus !== 'idle') {
+      return;
+    }
     unlockAudioPlayback();
     const nextMessages: PracticeMessage[] = [
       ...messages,
@@ -1099,6 +1238,7 @@ export function PracticeClient({
 
   const showGuidedChecklist =
     activePracticeMode === 'guided' && criteriaStatus.length > 0;
+  const recordingBusy = recordingStatus !== 'idle';
 
   return (
     <div className="mx-auto flex min-h-[100dvh] max-w-5xl flex-col px-4 py-6 md:px-8 md:py-10">
@@ -1188,8 +1328,17 @@ export function PracticeClient({
         ) : null}
         {!speechSupported ? (
           <p className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100">
-            Browser speech recognition is unavailable. Text practice still
-            works.
+            Microphone recording is unavailable. Text practice still works.
+          </p>
+        ) : null}
+        {recordingStatus === 'recording' ? (
+          <p className="mb-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-100">
+            Recording. Tap the mic again to transcribe.
+          </p>
+        ) : null}
+        {recordingStatus === 'transcribing' ? (
+          <p className="mb-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-100">
+            Transcribing your speech...
           </p>
         ) : null}
         <div className="flex items-center gap-2">
@@ -1199,11 +1348,17 @@ export function PracticeClient({
             placeholder={
               autoStarting
                 ? 'Wait for the tutor to start...'
-                : 'Type or dictate your answer...'
+                : recordingStatus === 'recording'
+                  ? 'Recording your answer...'
+                  : recordingStatus === 'transcribing'
+                    ? 'Transcribing your speech...'
+                    : 'Type or dictate your answer...'
             }
             rows={1}
             className="h-12 min-h-12 flex-1 resize-none overflow-y-auto rounded-2xl py-[11px] leading-6"
-            disabled={autoStarting || pending}
+            disabled={
+              autoStarting || pending || recordingStatus === 'recording'
+            }
             onKeyDown={(event) => {
               if (
                 event.key === 'Enter' &&
@@ -1220,10 +1375,16 @@ export function PracticeClient({
             variant="outline"
             size="icon"
             className="size-12 rounded-2xl"
-            onClick={listening ? stopListening : startListening}
-            disabled={autoStarting || pending}
+            onClick={
+              recordingStatus === 'recording' ? stopListening : startListening
+            }
+            disabled={
+              autoStarting || pending || recordingStatus === 'transcribing'
+            }
           >
-            {listening ? (
+            {recordingStatus === 'transcribing' ? (
+              <Loader2 className="size-5 animate-spin" />
+            ) : recordingStatus === 'recording' ? (
               <MicOff className="size-5" />
             ) : (
               <Mic className="size-5" />
@@ -1234,7 +1395,7 @@ export function PracticeClient({
             size="icon"
             className="size-12 rounded-2xl bg-emerald-500 text-white hover:bg-emerald-600"
             onClick={submit}
-            disabled={pending || autoStarting || !text.trim()}
+            disabled={pending || autoStarting || recordingBusy || !text.trim()}
           >
             {pending ? (
               <Loader2 className="size-5 animate-spin" />
