@@ -7,6 +7,7 @@ const STT_MODEL =
 const STT_TRANSCRIPTIONS_URL =
   process.env.AITALK_STT_TRANSCRIPTIONS_URL ||
   'https://openrouter.ai/api/v1/audio/transcriptions';
+const DEFAULT_STT_LANGUAGE = 'en';
 
 type RuntimeEnv = Record<string, unknown>;
 
@@ -63,6 +64,12 @@ function resolveAudioFormat(file: File) {
   return 'webm';
 }
 
+function normalizeSttLanguage(value: FormDataEntryValue | null) {
+  if (typeof value !== 'string') return DEFAULT_STT_LANGUAGE;
+  const normalized = value.trim().split('-')[0]?.toLowerCase() || '';
+  return normalized || DEFAULT_STT_LANGUAGE;
+}
+
 async function fileToBase64(file: File) {
   const bytes = new Uint8Array(await file.arrayBuffer());
   const chunkSize = 0x8000;
@@ -107,9 +114,7 @@ export async function POST(request: Request) {
       return jsonError('Audio file is too large.', 413);
     }
 
-    const language = input.get('language');
-    const normalizedLanguage =
-      typeof language === 'string' && language.trim() ? language.trim() : null;
+    const normalizedLanguage = normalizeSttLanguage(input.get('language'));
     const sttModel = readEnvValue(runtimeEnv, 'AITALK_STT_MODEL') || STT_MODEL;
     const transcriptionsUrl =
       readEnvValue(runtimeEnv, 'AITALK_STT_TRANSCRIPTIONS_URL') ||
@@ -120,7 +125,8 @@ export async function POST(request: Request) {
         data: await fileToBase64(file),
         format: resolveAudioFormat(file),
       },
-      ...(normalizedLanguage ? { language: normalizedLanguage } : {}),
+      language: normalizedLanguage,
+      temperature: 0,
     };
 
     const response = await fetch(transcriptionsUrl, {
