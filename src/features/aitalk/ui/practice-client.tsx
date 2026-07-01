@@ -1071,37 +1071,6 @@ export function PracticeClient({
     const language = resolveSttLanguage();
     const prompt = title ? `AITalk English speaking lesson: ${title}` : '';
 
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
-
-    if (session?.access_token) {
-      const directResponse = await fetch(
-        `${SUPABASE_URL.replace(/\/$/, '')}/functions/v1/speech-to-text`,
-        {
-          method: 'POST',
-          headers: {
-            apikey: SUPABASE_ANON_KEY,
-            Authorization: `Bearer ${session.access_token}`,
-          },
-          body: buildSpeechTranscriptFormData({
-            audioBlob,
-            language,
-            prompt,
-          }),
-        }
-      );
-
-      if (directResponse.ok) {
-        return parseTranscriptResponse(directResponse);
-      }
-      const errorData = await directResponse.json().catch(() => null);
-      console.warn('aitalk_speech_to_text_direct_failed', {
-        status: directResponse.status,
-        error: errorData?.error || errorData?.message,
-      });
-    }
-
     const response = await fetch('/api/aitalk/speech-to-text', {
       method: 'POST',
       body: buildSpeechTranscriptFormData({
