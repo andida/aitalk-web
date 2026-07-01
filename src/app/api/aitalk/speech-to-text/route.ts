@@ -8,8 +8,26 @@ const STT_TRANSCRIPTIONS_URL =
   process.env.AITALK_STT_TRANSCRIPTIONS_URL ||
   'https://openrouter.ai/api/v1/audio/transcriptions';
 
+type RuntimeEnv = Record<string, unknown>;
+
 function jsonError(message: string, status = 400) {
   return NextResponse.json({ error: message }, { status });
+}
+
+async function getCloudflareEnv() {
+  try {
+    const { getCloudflareContext } = await import('@opennextjs/cloudflare');
+    const { env } = await getCloudflareContext({ async: true });
+    return env as RuntimeEnv;
+  } catch {
+    return {} as RuntimeEnv;
+  }
+}
+
+function readEnvValue(env: RuntimeEnv, name: string) {
+  const value = env[name];
+  if (typeof value === 'string' && value.trim()) return value.trim();
+  return process.env[name]?.trim() || '';
 }
 
 function readProviderError(value: unknown) {
@@ -59,6 +77,7 @@ async function fileToBase64(file: File) {
 
 export async function POST(request: Request) {
   try {
+    const runtimeEnv = await getCloudflareEnv();
     const supabase = await createAitalkServerClient();
     const {
       data: { user },
@@ -71,8 +90,14 @@ export async function POST(request: Request) {
     } = await supabase.auth.getSession();
     if (!session?.access_token) return jsonError('Unauthorized.', 401);
 
-    const apiKey = process.env.OPENROUTER_API_KEY?.trim();
-    if (!apiKey) return jsonError('OPENROUTER_API_KEY is not set.', 500);
+    const apiKey = readEnvValue(runtimeEnv, 'OPENROUTER_API_KEY');
+    if (!apiKey) {
+      console.error('aitalk_speech_to_text_missing_openrouter_key', {
+        hasProcessEnv: Boolean(process.env.OPENROUTER_API_KEY),
+        hasCloudflareBinding: Boolean(runtimeEnv.OPENROUTER_API_KEY),
+      });
+      return jsonError('OPENROUTER_API_KEY is not set.', 500);
+    }
 
     const input = await request.formData();
     const file = input.get('file');
@@ -85,8 +110,12 @@ export async function POST(request: Request) {
     const language = input.get('language');
     const normalizedLanguage =
       typeof language === 'string' && language.trim() ? language.trim() : null;
+    const sttModel = readEnvValue(runtimeEnv, 'AITALK_STT_MODEL') || STT_MODEL;
+    const transcriptionsUrl =
+      readEnvValue(runtimeEnv, 'AITALK_STT_TRANSCRIPTIONS_URL') ||
+      STT_TRANSCRIPTIONS_URL;
     const requestBody = {
-      model: STT_MODEL,
+      model: sttModel,
       input_audio: {
         data: await fileToBase64(file),
         format: resolveAudioFormat(file),
@@ -94,7 +123,7 @@ export async function POST(request: Request) {
       ...(normalizedLanguage ? { language: normalizedLanguage } : {}),
     };
 
-    const response = await fetch(STT_TRANSCRIPTIONS_URL, {
+    const response = await fetch(transcriptionsUrl, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${apiKey}`,
@@ -123,7 +152,7 @@ export async function POST(request: Request) {
       {
         text,
         language: normalizedLanguage,
-        model: STT_MODEL,
+        model: sttModel,
         provider: 'openrouter',
       },
       {
@@ -135,6 +164,8 @@ export async function POST(request: Request) {
   } catch (error: any) {
     console.error('aitalk_speech_to_text_failed', {
       message: error?.message,
+      stack: error?.stack,
+      name: error?.name,
     });
     return jsonError(error?.message || 'Speech transcription failed.', 500);
   }
