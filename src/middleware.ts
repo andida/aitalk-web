@@ -23,13 +23,22 @@ function isSupabaseOAuthError(request: NextRequest) {
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // Handle internationalization first
-  let intlResponse = intlMiddleware(request);
-
   // Extract locale from pathname
   const locale = pathname.split('/')[1];
   const isValidLocale = routing.locales.includes(locale as any);
   const pathWithoutLocale = stripLocale(pathname);
+  const isAitalkPath =
+    isAitalkProtectedPath(pathWithoutLocale) ||
+    isAitalkAuthPath(pathWithoutLocale);
+  const isPrefixedAitalkPath = isValidLocale && isAitalkPath;
+
+  // Handle internationalization first. AITalk routes live under [locale], and
+  // next-intl rewrites /login to /en/login for the default locale. Once an
+  // AITalk path already has a locale prefix, let the app route render directly
+  // so auth pages do not get proxied or canonicalized again.
+  let intlResponse = isPrefixedAitalkPath
+    ? NextResponse.next()
+    : intlMiddleware(request);
 
   if (pathWithoutLocale === '/' && isSupabaseOAuthError(request)) {
     const signInUrl = new URL(
@@ -44,10 +53,7 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(signInUrl);
   }
 
-  if (
-    isAitalkProtectedPath(pathWithoutLocale) ||
-    isAitalkAuthPath(pathWithoutLocale)
-  ) {
+  if (isAitalkPath) {
     const sessionResult = await updateAitalkSession(request, intlResponse);
     intlResponse = sessionResult.response;
 

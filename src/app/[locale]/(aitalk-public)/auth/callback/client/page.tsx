@@ -112,7 +112,7 @@ export default function AitalkAuthCallbackClientPage() {
           <>
             <h1 className="text-xl font-semibold">Sign-in was not completed</h1>
             <p className="mt-3 text-sm leading-6 text-zinc-600 dark:text-zinc-300">
-              Please return to login and try Google again.
+              Please return to login and try again.
             </p>
             <Button
               type="button"
