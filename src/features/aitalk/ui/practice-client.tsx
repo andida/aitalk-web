@@ -17,6 +17,7 @@ import {
   ArrowRight,
   CheckCircle2,
   Circle,
+  Keyboard,
   Loader2,
   MessageCircle,
   Mic,
@@ -79,6 +80,7 @@ type SpeakOptions = {
 
 type SpeakingPhase = 'loading' | 'playing';
 type RecordingStatus = 'idle' | 'recording' | 'transcribing';
+type MobileInputMode = 'voice' | 'text';
 
 type TutorRaw = {
   raw?: unknown;
@@ -557,6 +559,8 @@ export function PracticeClient({
       : []
   );
   const [text, setText] = useState('');
+  const [mobileInputMode, setMobileInputMode] =
+    useState<MobileInputMode>('voice');
   const [recordingStatus, setRecordingStatus] =
     useState<RecordingStatus>('idle');
   const [speechSupported, setSpeechSupported] = useState(true);
@@ -682,6 +686,12 @@ export function PracticeClient({
         typeof MediaRecorder !== 'undefined'
     );
   }, []);
+
+  useEffect(() => {
+    if (!speechSupported) {
+      setMobileInputMode('text');
+    }
+  }, [speechSupported]);
 
   useEffect(() => {
     if (!isLessonPractice) return;
@@ -1208,17 +1218,64 @@ export function PracticeClient({
   const showGuidedChecklist =
     activePracticeMode === 'guided' && criteriaStatus.length > 0;
   const recordingBusy = recordingStatus !== 'idle';
+  const canSubmit =
+    !pending && !autoStarting && !recordingBusy && Boolean(text.trim());
+  const micDisabled =
+    autoStarting || pending || recordingStatus === 'transcribing';
+  const mobileVoiceStatus =
+    recordingStatus === 'recording'
+      ? 'Listening'
+      : recordingStatus === 'transcribing'
+        ? 'Transcribing'
+        : text.trim()
+          ? 'Transcript ready'
+          : 'Tap to speak';
+  const mobileVoiceHint =
+    recordingStatus === 'recording'
+      ? 'Tap again when you finish.'
+      : recordingStatus === 'transcribing'
+        ? 'Turning your speech into text.'
+        : text.trim()
+          ? text.trim()
+          : modeDescription;
+
+  function renderStatusAlerts() {
+    return (
+      <>
+        {error ? (
+          <p className="mb-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-200">
+            {error}
+          </p>
+        ) : null}
+        {!speechSupported ? (
+          <p className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100">
+            Microphone recording is unavailable. Text practice still works.
+          </p>
+        ) : null}
+        {recordingStatus === 'recording' ? (
+          <p className="mb-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-100">
+            Recording. Tap the mic again to transcribe.
+          </p>
+        ) : null}
+        {recordingStatus === 'transcribing' ? (
+          <p className="mb-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-100">
+            Transcribing your speech...
+          </p>
+        ) : null}
+      </>
+    );
+  }
 
   return (
-    <div className="mx-auto flex min-h-[100dvh] max-w-5xl flex-col px-4 py-6 md:px-8 md:py-10">
-      <div className="rounded-3xl border border-emerald-950/10 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-white/5">
+    <div className="mx-auto flex min-h-[100dvh] max-w-5xl flex-col px-4 pt-5 pb-56 md:px-8 md:py-10">
+      <div className="rounded-[1.75rem] border border-emerald-950/10 bg-white p-4 shadow-sm md:rounded-3xl md:p-5 dark:border-white/10 dark:bg-white/5">
         <div className="text-sm font-bold text-emerald-700 dark:text-emerald-300">
           {modeLabel}
         </div>
-        <h1 className="mt-2 text-3xl font-black tracking-tight md:text-4xl">
+        <h1 className="mt-2 text-2xl leading-tight font-black tracking-tight md:text-4xl">
           {title}
         </h1>
-        <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-600 dark:text-zinc-300">
+        <p className="mt-2 hidden max-w-2xl text-sm leading-6 text-zinc-600 sm:block dark:text-zinc-300">
           {modeDescription}
         </p>
       </div>
@@ -1236,13 +1293,13 @@ export function PracticeClient({
         />
       ) : null}
 
-      <div className="mt-5 flex-1 rounded-3xl border border-emerald-950/10 bg-white p-4 dark:border-white/10 dark:bg-white/5">
+      <div className="mt-4 flex-1 rounded-[1.75rem] border border-emerald-950/10 bg-white p-3 md:mt-5 md:rounded-3xl md:p-4 dark:border-white/10 dark:bg-white/5">
         <div className="grid gap-3">
           {messages.map((message, index) => (
             <div
               key={`${message.role}-${index}`}
               className={cn(
-                'max-w-[82%] rounded-2xl px-4 py-3 text-sm leading-6',
+                'max-w-[88%] rounded-2xl px-4 py-3 text-sm leading-6 md:max-w-[82%]',
                 message.role === 'user'
                   ? 'ml-auto bg-emerald-500 text-white'
                   : 'bg-zinc-100 text-zinc-900 dark:bg-white/10 dark:text-zinc-50'
@@ -1289,27 +1346,8 @@ export function PracticeClient({
         </div>
       </div>
 
-      <div className="sticky bottom-20 mt-5 rounded-3xl border border-emerald-950/10 bg-white p-3 shadow-lg shadow-emerald-950/5 md:bottom-5 dark:border-white/10 dark:bg-zinc-900">
-        {error ? (
-          <p className="mb-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-200">
-            {error}
-          </p>
-        ) : null}
-        {!speechSupported ? (
-          <p className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100">
-            Microphone recording is unavailable. Text practice still works.
-          </p>
-        ) : null}
-        {recordingStatus === 'recording' ? (
-          <p className="mb-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-100">
-            Recording. Tap the mic again to transcribe.
-          </p>
-        ) : null}
-        {recordingStatus === 'transcribing' ? (
-          <p className="mb-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-100">
-            Transcribing your speech...
-          </p>
-        ) : null}
+      <div className="sticky bottom-5 mt-5 hidden rounded-3xl border border-emerald-950/10 bg-white p-3 shadow-lg shadow-emerald-950/5 md:block dark:border-white/10 dark:bg-zinc-900">
+        {renderStatusAlerts()}
         <div className="flex items-center gap-2">
           <Textarea
             value={text}
@@ -1364,7 +1402,7 @@ export function PracticeClient({
             size="icon"
             className="size-12 rounded-2xl bg-emerald-500 text-white hover:bg-emerald-600"
             onClick={submit}
-            disabled={pending || autoStarting || recordingBusy || !text.trim()}
+            disabled={!canSubmit}
           >
             {pending ? (
               <Loader2 className="size-5 animate-spin" />
@@ -1372,6 +1410,142 @@ export function PracticeClient({
               <Send className="size-5" />
             )}
           </Button>
+        </div>
+      </div>
+
+      <div className="fixed inset-x-0 bottom-0 z-40 md:hidden">
+        <div className="mx-auto max-w-lg px-4 pb-[calc(env(safe-area-inset-bottom)_+_1rem)]">
+          <div className="rounded-[2rem] border border-emerald-950/10 bg-white/95 p-3 shadow-2xl shadow-emerald-950/10 backdrop-blur dark:border-white/10 dark:bg-zinc-900/95">
+            {renderStatusAlerts()}
+
+            {mobileInputMode === 'voice' ? (
+              <div className="grid justify-items-center gap-3 py-2 text-center">
+                <button
+                  type="button"
+                  onClick={
+                    recordingStatus === 'recording'
+                      ? stopListening
+                      : startListening
+                  }
+                  disabled={micDisabled}
+                  className={cn(
+                    'relative flex size-24 items-center justify-center rounded-full text-white shadow-xl shadow-emerald-900/20 transition active:scale-[0.98]',
+                    recordingStatus === 'recording'
+                      ? 'bg-red-500'
+                      : 'bg-emerald-500',
+                    micDisabled ? 'opacity-60' : 'hover:bg-emerald-600'
+                  )}
+                  aria-label={
+                    recordingStatus === 'recording'
+                      ? 'Stop recording'
+                      : 'Start recording'
+                  }
+                >
+                  {recordingStatus === 'transcribing' ? (
+                    <Loader2 className="size-9 animate-spin" />
+                  ) : recordingStatus === 'recording' ? (
+                    <MicOff className="size-9" />
+                  ) : (
+                    <Mic className="size-10" />
+                  )}
+                  {recordingStatus === 'recording' ? (
+                    <span className="absolute inset-0 rounded-full border-4 border-red-300/60" />
+                  ) : null}
+                </button>
+
+                <div className="max-w-[18rem]">
+                  <div className="text-sm font-black text-zinc-950 dark:text-zinc-50">
+                    {mobileVoiceStatus}
+                  </div>
+                  <p className="mt-1 line-clamp-2 text-xs leading-5 text-zinc-500 dark:text-zinc-400">
+                    {mobileVoiceHint}
+                  </p>
+                </div>
+
+                <div className="flex w-full items-center justify-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-11 rounded-2xl border-emerald-200 px-4 text-emerald-700 dark:border-emerald-400/30 dark:text-emerald-200"
+                    onClick={() => setMobileInputMode('text')}
+                  >
+                    <Keyboard className="size-4" />
+                    Type
+                  </Button>
+                  {text.trim() ? (
+                    <Button
+                      type="button"
+                      className="h-11 rounded-2xl bg-emerald-500 px-5 text-white hover:bg-emerald-600"
+                      onClick={submit}
+                      disabled={!canSubmit}
+                    >
+                      {pending ? (
+                        <Loader2 className="size-4 animate-spin" />
+                      ) : (
+                        <Send className="size-4" />
+                      )}
+                      Send
+                    </Button>
+                  ) : null}
+                </div>
+              </div>
+            ) : (
+              <div className="grid gap-3">
+                <Textarea
+                  value={text}
+                  onChange={(event) => setText(event.target.value)}
+                  placeholder={
+                    autoStarting
+                      ? 'Wait for the tutor to start...'
+                      : recordingStatus === 'recording'
+                        ? 'Recording your answer...'
+                        : recordingStatus === 'transcribing'
+                          ? 'Transcribing your speech...'
+                          : 'Type your answer...'
+                  }
+                  rows={3}
+                  className="min-h-24 resize-none rounded-2xl leading-6"
+                  disabled={
+                    autoStarting || pending || recordingStatus === 'recording'
+                  }
+                  onKeyDown={(event) => {
+                    if (
+                      event.key === 'Enter' &&
+                      !event.shiftKey &&
+                      !event.nativeEvent.isComposing
+                    ) {
+                      event.preventDefault();
+                      submit();
+                    }
+                  }}
+                />
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    className="size-12 rounded-2xl"
+                    onClick={() => setMobileInputMode('voice')}
+                  >
+                    <Mic className="size-5" />
+                  </Button>
+                  <Button
+                    type="button"
+                    className="h-12 flex-1 rounded-2xl bg-emerald-500 text-white hover:bg-emerald-600"
+                    onClick={submit}
+                    disabled={!canSubmit}
+                  >
+                    {pending ? (
+                      <Loader2 className="size-5 animate-spin" />
+                    ) : (
+                      <Send className="size-5" />
+                    )}
+                    Send
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>
