@@ -785,6 +785,7 @@ export function PracticeClient({
       return;
     }
 
+    unlockAudioPlayback();
     setError('');
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -873,13 +874,19 @@ export function PracticeClient({
     setError('');
     try {
       const result = await fetchSpeechTranscript(audioBlob);
-      if (!result.text) {
+      const transcriptText = result.text.trim();
+      if (!transcriptText) {
         setError('No speech was detected. Please try again or type instead.');
         return;
       }
-      setText((current) =>
-        current.trim() ? `${current.trim()} ${result.text}` : result.text
-      );
+      const nextText = text.trim()
+        ? `${text.trim()} ${transcriptText}`
+        : transcriptText;
+      setRecordingStatus('idle');
+
+      if (!submitText(nextText, { ignoreRecordingStatus: true })) {
+        setText(nextText);
+      }
     } catch (error) {
       setError(getErrorMessage(error) || 'Speech transcription failed.');
     } finally {
@@ -1098,10 +1105,18 @@ export function PracticeClient({
     return parseTranscriptResponse(response);
   }
 
-  function submit() {
-    const nextText = text.trim();
-    if (!nextText || pending || autoStarting || recordingStatus !== 'idle') {
-      return;
+  function submitText(
+    value: string,
+    options: { ignoreRecordingStatus?: boolean } = {}
+  ) {
+    const nextText = value.trim();
+    if (
+      !nextText ||
+      pending ||
+      autoStarting ||
+      (!options.ignoreRecordingStatus && recordingStatus !== 'idle')
+    ) {
+      return false;
     }
     unlockAudioPlayback();
     const nextMessages: PracticeMessage[] = [
@@ -1213,6 +1228,11 @@ export function PracticeClient({
       .finally(() => {
         setPending(false);
       });
+    return true;
+  }
+
+  function submit() {
+    submitText(text);
   }
 
   const showGuidedChecklist =
@@ -1222,22 +1242,28 @@ export function PracticeClient({
     !pending && !autoStarting && !recordingBusy && Boolean(text.trim());
   const micDisabled =
     autoStarting || pending || recordingStatus === 'transcribing';
-  const mobileVoiceStatus =
-    recordingStatus === 'recording'
-      ? 'Listening'
-      : recordingStatus === 'transcribing'
-        ? 'Transcribing'
-        : text.trim()
-          ? 'Transcript ready'
-          : 'Tap to speak';
-  const mobileVoiceHint =
-    recordingStatus === 'recording'
-      ? 'Tap again when you finish.'
-      : recordingStatus === 'transcribing'
-        ? 'Turning your speech into text.'
-        : text.trim()
-          ? text.trim()
-          : 'Speak your answer.';
+  const mobileVoiceStatus = pending
+    ? 'Sending'
+    : autoStarting
+      ? 'Starting'
+      : recordingStatus === 'recording'
+        ? 'Listening'
+        : recordingStatus === 'transcribing'
+          ? 'Transcribing'
+          : text.trim()
+            ? 'Transcript ready'
+            : 'Tap to speak';
+  const mobileVoiceHint = pending
+    ? 'Waiting for teacher reply.'
+    : autoStarting
+      ? 'Tutor is starting the lesson.'
+      : recordingStatus === 'recording'
+        ? 'Tap again when you finish.'
+        : recordingStatus === 'transcribing'
+          ? 'Turning your speech into text.'
+          : text.trim()
+            ? 'Switch to type mode to edit.'
+            : 'Speak your answer.';
 
   function renderStatusAlerts() {
     return (
@@ -1473,22 +1499,6 @@ export function PracticeClient({
                   >
                     <Keyboard className="size-4" />
                   </Button>
-                  {text.trim() ? (
-                    <Button
-                      type="button"
-                      size="icon"
-                      className="size-11 rounded-2xl bg-emerald-500 text-white hover:bg-emerald-600"
-                      onClick={submit}
-                      disabled={!canSubmit}
-                      aria-label="Send answer"
-                    >
-                      {pending ? (
-                        <Loader2 className="size-4 animate-spin" />
-                      ) : (
-                        <Send className="size-4" />
-                      )}
-                    </Button>
-                  ) : null}
                 </div>
               </div>
             ) : (
