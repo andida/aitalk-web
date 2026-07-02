@@ -82,6 +82,16 @@ export default async function PracticePage({
   const nextLessonId = lesson
     ? getNextPlanLessonId(activePlan, lesson.id)
     : null;
+  const returnHref = topic
+    ? '/explore'
+    : lesson
+      ? `/lessons/${lesson.id}`
+      : '/app';
+  const returnLabel = topic
+    ? 'Back to explore'
+    : lesson
+      ? 'Back to lesson'
+      : 'Back to home';
 
   return (
     <AitalkAppShell active="/practice">
@@ -91,6 +101,8 @@ export default async function PracticePage({
         planId={topic ? undefined : (activePlan?.plan?.id ?? undefined)}
         practiceMode={practiceMode}
         progressStatus={lessonProgress?.status ?? undefined}
+        returnHref={returnHref}
+        returnLabel={returnLabel}
         requiredTurns={practiceConfig.requiredTurns}
         successCriteria={practiceConfig.successCriteria}
         nextLessonId={nextLessonId ?? undefined}

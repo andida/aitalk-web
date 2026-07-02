@@ -14,6 +14,7 @@ import {
 } from '@/features/aitalk/lib/tts';
 import { createAitalkBrowserClient } from '@/features/aitalk/supabase/browser';
 import {
+  ArrowLeft,
   ArrowRight,
   CheckCircle2,
   Circle,
@@ -516,6 +517,8 @@ export function PracticeClient({
   planId,
   practiceMode,
   progressStatus,
+  returnHref,
+  returnLabel,
   requiredTurns,
   speechLocale,
   speechStyle,
@@ -535,6 +538,8 @@ export function PracticeClient({
   planId?: number;
   practiceMode: PracticeMode;
   progressStatus?: string;
+  returnHref: string;
+  returnLabel: string;
   requiredTurns: number;
   speechLocale: string;
   speechStyle?: string;
@@ -1307,6 +1312,16 @@ export function PracticeClient({
       <div className="rounded-[1.75rem] border border-emerald-950/10 bg-white p-4 shadow-sm md:rounded-3xl md:p-5 dark:border-white/10 dark:bg-white/5">
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
+            <Button
+              asChild
+              variant="ghost"
+              className="mb-2 -ml-2 h-9 w-fit rounded-xl px-2 text-emerald-700 hover:bg-emerald-50 dark:text-emerald-200 dark:hover:bg-emerald-500/10"
+            >
+              <Link href={returnHref}>
+                <ArrowLeft className="size-4" />
+                {returnLabel}
+              </Link>
+            </Button>
             <div className="text-sm font-bold text-emerald-700 dark:text-emerald-300">
               {modeLabel}
             </div>
