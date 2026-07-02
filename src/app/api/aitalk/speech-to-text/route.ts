@@ -2,11 +2,10 @@ import { NextResponse } from 'next/server';
 import { createAitalkServerClient } from '@/features/aitalk/supabase/server';
 
 const MAX_AUDIO_BYTES = 25 * 1024 * 1024;
-const STT_MODEL =
-  process.env.AITALK_STT_MODEL || 'openai/gpt-4o-mini-transcribe';
-const STT_TRANSCRIPTIONS_URL =
-  process.env.AITALK_STT_TRANSCRIPTIONS_URL ||
-  'https://openrouter.ai/api/v1/audio/transcriptions';
+const STT_AGENT_URL =
+  process.env.AITALK_STT_AGENT_URL ||
+  process.env.COURSE_TUTOR_AGENT_STT_URL ||
+  'https://agent.aitalk.im/speech-to-text';
 const DEFAULT_STT_LANGUAGE = 'en';
 
 type RuntimeEnv = Record<string, unknown>;
@@ -31,7 +30,7 @@ function readEnvValue(env: RuntimeEnv, name: string) {
   return process.env[name]?.trim() || '';
 }
 
-function readProviderError(value: unknown) {
+function readUpstreamError(value: unknown) {
   if (!value || typeof value !== 'object') return '';
   const record = value as Record<string, unknown>;
   const error = record.error;
@@ -42,44 +41,10 @@ function readProviderError(value: unknown) {
   return typeof record.message === 'string' ? record.message : '';
 }
 
-function readTranscriptText(value: unknown) {
-  if (!value || typeof value !== 'object') return '';
-  const text = (value as Record<string, unknown>).text;
-  return typeof text === 'string' ? text.trim() : '';
-}
-
-function resolveAudioFormat(file: File) {
-  const type = file.type.toLowerCase();
-  const name = file.name.toLowerCase();
-
-  if (type.includes('webm') || name.endsWith('.webm')) return 'webm';
-  if (type.includes('wav') || name.endsWith('.wav')) return 'wav';
-  if (type.includes('mpeg') || name.endsWith('.mp3')) return 'mp3';
-  if (type.includes('mp3') || name.endsWith('.mp3')) return 'mp3';
-  if (type.includes('flac') || name.endsWith('.flac')) return 'flac';
-  if (type.includes('ogg') || name.endsWith('.ogg')) return 'ogg';
-  if (type.includes('aac') || name.endsWith('.aac')) return 'aac';
-  if (type.includes('mp4') || name.endsWith('.m4a')) return 'm4a';
-
-  return 'webm';
-}
-
 function normalizeSttLanguage(value: FormDataEntryValue | null) {
   if (typeof value !== 'string') return DEFAULT_STT_LANGUAGE;
   const normalized = value.trim().split('-')[0]?.toLowerCase() || '';
   return normalized || DEFAULT_STT_LANGUAGE;
-}
-
-async function fileToBase64(file: File) {
-  const bytes = new Uint8Array(await file.arrayBuffer());
-  const chunkSize = 0x8000;
-  let binary = '';
-
-  for (let i = 0; i < bytes.length; i += chunkSize) {
-    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
-  }
-
-  return btoa(binary);
 }
 
 export async function POST(request: Request) {
@@ -97,15 +62,6 @@ export async function POST(request: Request) {
     } = await supabase.auth.getSession();
     if (!session?.access_token) return jsonError('Unauthorized.', 401);
 
-    const apiKey = readEnvValue(runtimeEnv, 'OPENROUTER_API_KEY');
-    if (!apiKey) {
-      console.error('aitalk_speech_to_text_missing_openrouter_key', {
-        hasProcessEnv: Boolean(process.env.OPENROUTER_API_KEY),
-        hasCloudflareBinding: Boolean(runtimeEnv.OPENROUTER_API_KEY),
-      });
-      return jsonError('OPENROUTER_API_KEY is not set.', 500);
-    }
-
     const input = await request.formData();
     const file = input.get('file');
     if (!(file instanceof File)) return jsonError('Audio file is required.');
@@ -115,58 +71,37 @@ export async function POST(request: Request) {
     }
 
     const normalizedLanguage = normalizeSttLanguage(input.get('language'));
-    const sttModel = readEnvValue(runtimeEnv, 'AITALK_STT_MODEL') || STT_MODEL;
-    const transcriptionsUrl =
-      readEnvValue(runtimeEnv, 'AITALK_STT_TRANSCRIPTIONS_URL') ||
-      STT_TRANSCRIPTIONS_URL;
-    const requestBody = {
-      model: sttModel,
-      input_audio: {
-        data: await fileToBase64(file),
-        format: resolveAudioFormat(file),
-      },
-      language: normalizedLanguage,
-      temperature: 0,
-    };
+    const agentUrl =
+      readEnvValue(runtimeEnv, 'AITALK_STT_AGENT_URL') ||
+      readEnvValue(runtimeEnv, 'COURSE_TUTOR_AGENT_STT_URL') ||
+      STT_AGENT_URL;
+    const agentFormData = new FormData();
+    agentFormData.set('file', file, file.name || 'speech.webm');
+    agentFormData.set('language', normalizedLanguage);
 
-    const response = await fetch(transcriptionsUrl, {
+    const response = await fetch(agentUrl, {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-        'HTTP-Referer': 'https://aitalk.im',
-        'X-Title': 'AITalk SpeechToText',
+        Authorization: `Bearer ${session.access_token}`,
       },
-      body: JSON.stringify(requestBody),
+      body: agentFormData,
     });
 
     const data = await response.json().catch(() => null);
-    const providerError = readProviderError(data);
     if (!response.ok) {
-      console.error('aitalk_speech_to_text_provider_failed', {
+      const error = readUpstreamError(data) || 'Speech transcription failed.';
+      console.error('aitalk_speech_to_text_agent_failed', {
         status: response.status,
         body: JSON.stringify(data).slice(0, 500),
       });
-      return jsonError(
-        providerError || 'Speech transcription failed.',
-        response.status
-      );
+      return jsonError(error, response.status);
     }
 
-    const text = readTranscriptText(data);
-    return NextResponse.json(
-      {
-        text,
-        language: normalizedLanguage,
-        model: sttModel,
-        provider: 'openrouter',
+    return NextResponse.json(data, {
+      headers: {
+        'Cache-Control': 'no-store',
       },
-      {
-        headers: {
-          'Cache-Control': 'no-store',
-        },
-      }
-    );
+    });
   } catch (error: any) {
     console.error('aitalk_speech_to_text_failed', {
       message: error?.message,
