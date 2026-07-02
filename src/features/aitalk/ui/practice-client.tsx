@@ -520,6 +520,8 @@ export function PracticeClient({
   speechLocale,
   speechStyle,
   successCriteria,
+  teacherAvatarUrl,
+  teacherDescription,
   teacherName,
   topic,
   userId,
@@ -537,6 +539,8 @@ export function PracticeClient({
   speechLocale: string;
   speechStyle?: string;
   successCriteria: string[];
+  teacherAvatarUrl?: string;
+  teacherDescription?: string;
   teacherName?: string;
   topic?: TopicExercise | null;
   userId?: string;
@@ -616,6 +620,12 @@ export function PracticeClient({
   const isLessonPractice = Boolean(lesson && activePracticeMode !== 'topic');
   const modeLabel = getModeLabel(activePracticeMode);
   const modeDescription = getModeDescription(activePracticeMode);
+  const tutorName = teacherName || 'AITalk tutor';
+  const tutorAvatarUrl = teacherAvatarUrl || '/logo.svg';
+  const tutorDescription =
+    teacherDescription ||
+    [voiceName, speechStyle].filter(Boolean).join(' / ') ||
+    learnLanguage;
   const tutorTopic = useMemo(() => {
     if (!activeTopic) {
       return buildLessonTutorTopic(title, activePracticeMode, lesson);
@@ -1295,15 +1305,34 @@ export function PracticeClient({
   return (
     <div className="mx-auto flex min-h-[100dvh] max-w-5xl flex-col px-4 pt-5 pb-36 md:px-8 md:py-10">
       <div className="rounded-[1.75rem] border border-emerald-950/10 bg-white p-4 shadow-sm md:rounded-3xl md:p-5 dark:border-white/10 dark:bg-white/5">
-        <div className="text-sm font-bold text-emerald-700 dark:text-emerald-300">
-          {modeLabel}
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <div className="text-sm font-bold text-emerald-700 dark:text-emerald-300">
+              {modeLabel}
+            </div>
+            <h1 className="mt-2 text-2xl leading-tight font-black tracking-tight md:text-4xl">
+              {title}
+            </h1>
+            <p className="mt-2 hidden max-w-2xl text-sm leading-6 text-zinc-600 sm:block dark:text-zinc-300">
+              {modeDescription}
+            </p>
+          </div>
+          <div className="flex shrink-0 items-center gap-2 rounded-2xl border border-emerald-950/10 bg-emerald-50 px-2.5 py-2 dark:border-white/10 dark:bg-white/10">
+            <img
+              src={tutorAvatarUrl}
+              alt={tutorName}
+              className="size-11 rounded-full object-cover"
+            />
+            <div className="hidden min-w-0 sm:block">
+              <div className="max-w-32 truncate text-sm font-black text-zinc-950 dark:text-zinc-50">
+                {tutorName}
+              </div>
+              <div className="max-w-32 truncate text-xs text-zinc-600 dark:text-zinc-300">
+                {tutorDescription}
+              </div>
+            </div>
+          </div>
         </div>
-        <h1 className="mt-2 text-2xl leading-tight font-black tracking-tight md:text-4xl">
-          {title}
-        </h1>
-        <p className="mt-2 hidden max-w-2xl text-sm leading-6 text-zinc-600 sm:block dark:text-zinc-300">
-          {modeDescription}
-        </p>
       </div>
 
       {showGuidedChecklist ? (
@@ -1321,42 +1350,54 @@ export function PracticeClient({
 
       <div className="mt-4 flex-1 rounded-[1.75rem] border border-emerald-950/10 bg-white p-3 md:mt-5 md:rounded-3xl md:p-4 dark:border-white/10 dark:bg-white/5">
         <div className="grid gap-3">
-          {messages.map((message, index) => (
-            <div
-              key={`${message.role}-${index}`}
-              className={cn(
-                'max-w-[88%] rounded-2xl px-4 py-3 text-sm leading-6 md:max-w-[82%]',
-                message.role === 'user'
-                  ? 'ml-auto bg-emerald-500 text-white'
-                  : 'bg-zinc-100 text-zinc-900 dark:bg-white/10 dark:text-zinc-50'
-              )}
-            >
-              <div className="whitespace-pre-wrap">{message.content}</div>
-              {message.role === 'assistant' ? (
-                <button
-                  type="button"
-                  onClick={() => speak(message.content, index)}
-                  disabled={speakingMessageIndex !== null}
-                  className="mt-2 inline-flex items-center gap-1 text-xs font-bold text-emerald-700 dark:text-emerald-300"
-                >
-                  {speakingMessageIndex === index ? (
-                    speakingPhase === 'loading' ? (
-                      <Loader2 className="size-3.5 animate-spin" />
+          {messages.map((message, index) =>
+            message.role === 'user' ? (
+              <div
+                key={`${message.role}-${index}`}
+                className="ml-auto max-w-[88%] rounded-2xl bg-emerald-500 px-4 py-3 text-sm leading-6 text-white md:max-w-[82%]"
+              >
+                <div className="whitespace-pre-wrap">{message.content}</div>
+              </div>
+            ) : (
+              <div
+                key={`${message.role}-${index}`}
+                className="flex max-w-[92%] items-start gap-2 md:max-w-[84%]"
+              >
+                <img
+                  src={tutorAvatarUrl}
+                  alt={tutorName}
+                  className="mt-1 size-9 rounded-full object-cover ring-2 ring-emerald-50 dark:ring-white/10"
+                />
+                <div className="rounded-2xl bg-zinc-100 px-4 py-3 text-sm leading-6 text-zinc-900 dark:bg-white/10 dark:text-zinc-50">
+                  <div className="mb-1 text-xs font-black text-emerald-700 dark:text-emerald-300">
+                    {tutorName}
+                  </div>
+                  <div className="whitespace-pre-wrap">{message.content}</div>
+                  <button
+                    type="button"
+                    onClick={() => speak(message.content, index)}
+                    disabled={speakingMessageIndex !== null}
+                    className="mt-2 inline-flex items-center gap-1 text-xs font-bold text-emerald-700 dark:text-emerald-300"
+                  >
+                    {speakingMessageIndex === index ? (
+                      speakingPhase === 'loading' ? (
+                        <Loader2 className="size-3.5 animate-spin" />
+                      ) : (
+                        <Volume2 className="size-3.5" />
+                      )
                     ) : (
                       <Volume2 className="size-3.5" />
-                    )
-                  ) : (
-                    <Volume2 className="size-3.5" />
-                  )}
-                  {speakingMessageIndex === index
-                    ? speakingPhase === 'loading'
-                      ? 'Loading'
-                      : 'Playing'
-                    : 'Play'}
-                </button>
-              ) : null}
-            </div>
-          ))}
+                    )}
+                    {speakingMessageIndex === index
+                      ? speakingPhase === 'loading'
+                        ? 'Loading'
+                        : 'Playing'
+                      : 'Play'}
+                  </button>
+                </div>
+              </div>
+            )
+          )}
           {autoStarting ? (
             <div className="flex max-w-[82%] items-center gap-2 rounded-2xl bg-zinc-100 px-4 py-3 text-sm text-zinc-600 dark:bg-white/10 dark:text-zinc-300">
               <Loader2 className="size-4 animate-spin" />
@@ -1446,13 +1487,20 @@ export function PracticeClient({
 
             {mobileInputMode === 'voice' ? (
               <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 py-1">
-                <div className="min-w-0">
-                  <div className="truncate text-xs font-black text-zinc-950 dark:text-zinc-50">
-                    {mobileVoiceStatus}
+                <div className="flex min-w-0 items-center gap-2">
+                  <img
+                    src={tutorAvatarUrl}
+                    alt={tutorName}
+                    className="size-9 rounded-full object-cover"
+                  />
+                  <div className="min-w-0">
+                    <div className="truncate text-xs font-black text-zinc-950 dark:text-zinc-50">
+                      {mobileVoiceStatus}
+                    </div>
+                    <p className="mt-0.5 line-clamp-1 text-[11px] leading-4 text-zinc-500 dark:text-zinc-400">
+                      {tutorName} / {mobileVoiceHint}
+                    </p>
                   </div>
-                  <p className="mt-0.5 line-clamp-1 text-[11px] leading-4 text-zinc-500 dark:text-zinc-400">
-                    {mobileVoiceHint}
-                  </p>
                 </div>
 
                 <button

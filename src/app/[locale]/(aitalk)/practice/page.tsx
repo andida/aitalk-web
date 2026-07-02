@@ -102,6 +102,15 @@ export default async function PracticePage({
         }
         speechLocale={profile?.learn_language_code || 'en-US'}
         speechStyle={teacher?.style || 'friendly'}
+        teacherAvatarUrl={
+          teacher?.avatar_url || teacher?.avatarUrl || undefined
+        }
+        teacherDescription={
+          teacher?.nationality ||
+          teacher?.language ||
+          profile?.learn_language ||
+          undefined
+        }
         teacherName={teacher?.name || undefined}
         voiceName={teacher?.voice_name || teacher?.voiceName || undefined}
       />
