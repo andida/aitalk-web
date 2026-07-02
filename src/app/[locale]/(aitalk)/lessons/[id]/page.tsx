@@ -25,6 +25,7 @@ import type {
 } from '@/features/aitalk/types';
 import { AitalkAppShell } from '@/features/aitalk/ui/app-shell';
 import {
+  ArrowLeft,
   CheckCircle2,
   CircleDot,
   MessageCircle,
@@ -89,6 +90,16 @@ export default async function LessonDetailPage({
               </p>
             </div>
             <div className="flex flex-col gap-2 sm:flex-row">
+              <Button
+                asChild
+                variant="outline"
+                className="h-11 rounded-xl border-emerald-200 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-400/30 dark:text-emerald-200 dark:hover:bg-emerald-500/10"
+              >
+                <Link href="/lessons">
+                  <ArrowLeft className="size-5" />
+                  Back to lessons
+                </Link>
+              </Button>
               {isCompleted ? (
                 <>
                   <Button
