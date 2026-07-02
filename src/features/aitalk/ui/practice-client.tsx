@@ -1237,7 +1237,7 @@ export function PracticeClient({
         ? 'Turning your speech into text.'
         : text.trim()
           ? text.trim()
-          : modeDescription;
+          : 'Speak your answer.';
 
   function renderStatusAlerts() {
     return (
@@ -1267,7 +1267,7 @@ export function PracticeClient({
   }
 
   return (
-    <div className="mx-auto flex min-h-[100dvh] max-w-5xl flex-col px-4 pt-5 pb-56 md:px-8 md:py-10">
+    <div className="mx-auto flex min-h-[100dvh] max-w-5xl flex-col px-4 pt-5 pb-36 md:px-8 md:py-10">
       <div className="rounded-[1.75rem] border border-emerald-950/10 bg-white p-4 shadow-sm md:rounded-3xl md:p-5 dark:border-white/10 dark:bg-white/5">
         <div className="text-sm font-bold text-emerald-700 dark:text-emerald-300">
           {modeLabel}
@@ -1414,12 +1414,21 @@ export function PracticeClient({
       </div>
 
       <div className="fixed inset-x-0 bottom-0 z-40 md:hidden">
-        <div className="mx-auto max-w-lg px-4 pb-[calc(env(safe-area-inset-bottom)_+_1rem)]">
-          <div className="rounded-[2rem] border border-emerald-950/10 bg-white/95 p-3 shadow-2xl shadow-emerald-950/10 backdrop-blur dark:border-white/10 dark:bg-zinc-900/95">
+        <div className="mx-auto max-w-md px-3 pb-[calc(env(safe-area-inset-bottom)_+_0.75rem)]">
+          <div className="rounded-[1.5rem] border border-emerald-950/10 bg-white/95 p-2.5 shadow-xl shadow-emerald-950/10 backdrop-blur dark:border-white/10 dark:bg-zinc-900/95">
             {renderStatusAlerts()}
 
             {mobileInputMode === 'voice' ? (
-              <div className="grid justify-items-center gap-3 py-2 text-center">
+              <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 py-1">
+                <div className="min-w-0">
+                  <div className="truncate text-xs font-black text-zinc-950 dark:text-zinc-50">
+                    {mobileVoiceStatus}
+                  </div>
+                  <p className="mt-0.5 line-clamp-1 text-[11px] leading-4 text-zinc-500 dark:text-zinc-400">
+                    {mobileVoiceHint}
+                  </p>
+                </div>
+
                 <button
                   type="button"
                   onClick={
@@ -1429,7 +1438,7 @@ export function PracticeClient({
                   }
                   disabled={micDisabled}
                   className={cn(
-                    'relative flex size-24 items-center justify-center rounded-full text-white shadow-xl shadow-emerald-900/20 transition active:scale-[0.98]',
+                    'relative flex size-16 items-center justify-center rounded-full text-white shadow-lg shadow-emerald-900/20 transition active:scale-[0.98]',
                     recordingStatus === 'recording'
                       ? 'bg-red-500'
                       : 'bg-emerald-500',
@@ -1442,49 +1451,42 @@ export function PracticeClient({
                   }
                 >
                   {recordingStatus === 'transcribing' ? (
-                    <Loader2 className="size-9 animate-spin" />
+                    <Loader2 className="size-7 animate-spin" />
                   ) : recordingStatus === 'recording' ? (
-                    <MicOff className="size-9" />
+                    <MicOff className="size-7" />
                   ) : (
-                    <Mic className="size-10" />
+                    <Mic className="size-8" />
                   )}
                   {recordingStatus === 'recording' ? (
-                    <span className="absolute inset-0 rounded-full border-4 border-red-300/60" />
+                    <span className="absolute inset-0 rounded-full border-2 border-red-300/60" />
                   ) : null}
                 </button>
 
-                <div className="max-w-[18rem]">
-                  <div className="text-sm font-black text-zinc-950 dark:text-zinc-50">
-                    {mobileVoiceStatus}
-                  </div>
-                  <p className="mt-1 line-clamp-2 text-xs leading-5 text-zinc-500 dark:text-zinc-400">
-                    {mobileVoiceHint}
-                  </p>
-                </div>
-
-                <div className="flex w-full items-center justify-center gap-2">
+                <div className="flex min-w-0 items-center justify-end gap-1.5">
                   <Button
                     type="button"
                     variant="outline"
-                    className="h-11 rounded-2xl border-emerald-200 px-4 text-emerald-700 dark:border-emerald-400/30 dark:text-emerald-200"
+                    size="icon"
+                    className="size-11 rounded-2xl border-emerald-200 text-emerald-700 dark:border-emerald-400/30 dark:text-emerald-200"
                     onClick={() => setMobileInputMode('text')}
+                    aria-label="Type answer"
                   >
                     <Keyboard className="size-4" />
-                    Type
                   </Button>
                   {text.trim() ? (
                     <Button
                       type="button"
-                      className="h-11 rounded-2xl bg-emerald-500 px-5 text-white hover:bg-emerald-600"
+                      size="icon"
+                      className="size-11 rounded-2xl bg-emerald-500 text-white hover:bg-emerald-600"
                       onClick={submit}
                       disabled={!canSubmit}
+                      aria-label="Send answer"
                     >
                       {pending ? (
                         <Loader2 className="size-4 animate-spin" />
                       ) : (
                         <Send className="size-4" />
                       )}
-                      Send
                     </Button>
                   ) : null}
                 </div>
@@ -1504,7 +1506,7 @@ export function PracticeClient({
                           : 'Type your answer...'
                   }
                   rows={3}
-                  className="min-h-24 resize-none rounded-2xl leading-6"
+                  className="min-h-20 resize-none rounded-2xl leading-6"
                   disabled={
                     autoStarting || pending || recordingStatus === 'recording'
                   }
