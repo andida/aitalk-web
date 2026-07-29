@@ -240,13 +240,13 @@ export function AitalkLoginClient({
               minLength={6}
               required
               disabled={isBusy}
-              className="h-12 rounded-lg border-zinc-300 bg-white pr-11 pl-10 text-base shadow-sm shadow-zinc-900/5 dark:border-white/15 dark:bg-zinc-950"
+              className="h-12 rounded-lg border-zinc-300 bg-white pr-12 pl-10 text-base shadow-sm shadow-zinc-900/5 dark:border-white/15 dark:bg-zinc-950"
             />
             <button
               type="button"
               onClick={() => setShowPassword((value) => !value)}
               disabled={isBusy}
-              className="absolute top-1/2 right-2 flex size-9 -translate-y-1/2 items-center justify-center rounded-md text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-900 disabled:cursor-not-allowed disabled:opacity-50 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-white"
+              className="absolute top-1/2 right-0.5 flex size-11 -translate-y-1/2 items-center justify-center rounded-md text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-900 disabled:cursor-not-allowed disabled:opacity-50 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-white"
               aria-label={showPassword ? 'Hide password' : 'Show password'}
             >
               {showPassword ? (

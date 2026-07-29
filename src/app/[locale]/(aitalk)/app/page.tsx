@@ -137,7 +137,8 @@ export default async function AitalkAppPage({
                   ))}
                   {teachers.length === 0 ? (
                     <p className="text-sm text-zinc-600 dark:text-zinc-300">
-                      No tutors loaded yet. Check the `teacher` table.
+                      Your tutor team is getting ready. You can still start a
+                      guided lesson or free practice.
                     </p>
                   ) : null}
                 </div>
@@ -164,6 +165,24 @@ export default async function AitalkAppPage({
                       </p>
                     </div>
                   ))}
+                  {topics.length === 0 ? (
+                    <div className="rounded-2xl border border-dashed border-emerald-200 bg-emerald-50/70 p-4 dark:border-emerald-400/30 dark:bg-emerald-500/10">
+                      <p className="text-sm leading-6 text-zinc-600 dark:text-zinc-300">
+                        Conversation prompts are getting ready. You can start
+                        free practice now and choose what you want to discuss.
+                      </p>
+                      <Button
+                        asChild
+                        variant="outline"
+                        className="mt-3 h-11 rounded-xl border-emerald-200 bg-white text-emerald-700 hover:bg-emerald-100 dark:border-emerald-400/30 dark:bg-white/10 dark:text-emerald-100"
+                      >
+                        <Link href="/practice?mode=free">
+                          <MessageCircle className="size-4" />
+                          Start free practice
+                        </Link>
+                      </Button>
+                    </div>
+                  ) : null}
                 </div>
               </CardContent>
             </Card>

@@ -71,7 +71,7 @@ export async function AitalkAppShell({
           </div>
         </Link>
 
-        <nav className="mt-8 grid gap-1">
+        <nav aria-label="Primary navigation" className="mt-8 grid gap-1">
           {navItems.map((item) => {
             const Icon = item.icon;
             const selected = active === item.href;
@@ -87,7 +87,10 @@ export async function AitalkAppShell({
                     : 'text-zinc-700 hover:bg-emerald-50 dark:text-zinc-200 dark:hover:bg-white/10'
                 )}
               >
-                <Link href={item.href}>
+                <Link
+                  href={item.href}
+                  aria-current={selected ? 'page' : undefined}
+                >
                   <Icon className="size-5" />
                   {item.label}
                 </Link>
@@ -159,13 +162,21 @@ export async function AitalkAppShell({
       </aside>
 
       <main
-        className={cn(hideMobileNav ? 'pb-0' : 'pb-24', 'md:ml-72 md:pb-0')}
+        className={cn(
+          hideMobileNav
+            ? 'pb-0'
+            : 'pb-[calc(6rem+env(safe-area-inset-bottom))]',
+          'md:ml-72 md:pb-0'
+        )}
       >
         {children}
       </main>
 
       {hideMobileNav ? null : (
-        <nav className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-emerald-950/10 bg-white/95 px-2 py-2 backdrop-blur md:hidden dark:border-white/10 dark:bg-zinc-950/95">
+        <nav
+          aria-label="Primary navigation"
+          className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-emerald-950/10 bg-white/95 px-2 pt-2 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] backdrop-blur md:hidden dark:border-white/10 dark:bg-zinc-950/95"
+        >
           {navItems.map((item) => {
             const Icon = item.icon;
             const selected = active === item.href;
@@ -174,6 +185,7 @@ export async function AitalkAppShell({
               <Link
                 key={item.href}
                 href={item.href}
+                aria-current={selected ? 'page' : undefined}
                 className={cn(
                   'flex min-h-14 flex-col items-center justify-center gap-1 rounded-xl text-[11px] font-bold',
                   selected

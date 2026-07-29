@@ -70,6 +70,12 @@ type SpeakOptions = {
 type SpeakingPhase = 'loading' | 'playing';
 type RecordingStatus = 'idle' | 'recording' | 'transcribing';
 type MobileInputMode = 'voice' | 'text';
+type ErrorRecovery = 'auto-start' | 'tutor-turn' | null;
+
+type FailedTutorTurn = {
+  nextText: string;
+  transcriptMessages: PracticeMessage[];
+};
 
 type TutorRaw = {
   raw?: unknown;
@@ -543,6 +549,10 @@ export function PracticeClient({
     useState<RecordingStatus>('idle');
   const [speechSupported, setSpeechSupported] = useState(true);
   const [error, setError] = useState('');
+  const [errorRecovery, setErrorRecovery] = useState<ErrorRecovery>(null);
+  const [failedTutorTurn, setFailedTutorTurn] =
+    useState<FailedTutorTurn | null>(null);
+  const [autoStartAttempt, setAutoStartAttempt] = useState(0);
   const [autoStarting, setAutoStarting] = useState(false);
   const [pending, setPending] = useState(false);
   const [lessonCompleted, setLessonCompleted] = useState(
@@ -574,6 +584,9 @@ export function PracticeClient({
   const audioUnlockedRef = useRef(false);
   const speechRunIdRef = useRef(0);
   const autoStartScopeRef = useRef('');
+  const practiceRootRef = useRef<HTMLDivElement | null>(null);
+  const mobileComposerRef = useRef<HTMLDivElement | null>(null);
+  const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
   const title = useMemo(
     () => activeTopic?.title ?? displayLessonTitle(lesson),
@@ -613,6 +626,8 @@ export function PracticeClient({
   useEffect(() => {
     setText('');
     setError('');
+    setErrorRecovery(null);
+    setFailedTutorTurn(null);
     setLessonCompleted(
       progressStatus === 'completed' ||
         activePracticeMode === 'review' ||
@@ -671,6 +686,67 @@ export function PracticeClient({
   }, [speechSupported]);
 
   useEffect(() => {
+    const root = practiceRootRef.current;
+    const composer = mobileComposerRef.current;
+    if (!root || !composer) return;
+
+    const updateComposerHeight = () => {
+      root.style.setProperty(
+        '--mobile-composer-height',
+        `${Math.ceil(composer.getBoundingClientRect().height)}px`
+      );
+    };
+
+    updateComposerHeight();
+    if (typeof ResizeObserver === 'undefined') return;
+
+    const observer = new ResizeObserver(updateComposerHeight);
+    observer.observe(composer);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (hydratedScope !== practiceScope) return;
+
+    const frame = window.requestAnimationFrame(() => {
+      messagesEndRef.current?.scrollIntoView({
+        behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches
+          ? 'auto'
+          : 'smooth',
+        block: 'nearest',
+      });
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [
+    autoStarting,
+    error,
+    hydratedScope,
+    messages.length,
+    mobileInputMode,
+    pending,
+    practiceScope,
+  ]);
+
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    if (!viewport) return;
+
+    const keepLatestMessageVisible = () => {
+      window.requestAnimationFrame(() => {
+        messagesEndRef.current?.scrollIntoView({
+          behavior: 'auto',
+          block: 'nearest',
+        });
+      });
+    };
+
+    viewport.addEventListener('resize', keepLatestMessageVisible);
+    return () =>
+      viewport.removeEventListener('resize', keepLatestMessageVisible);
+  }, []);
+
+  useEffect(() => {
     if (!isLessonPractice) return;
     if (hydratedScope !== practiceScope) return;
     if (messages.length > 0) return;
@@ -680,6 +756,7 @@ export function PracticeClient({
     let cancelled = false;
     setAutoStarting(true);
     setError('');
+    setErrorRecovery(null);
 
     askTutorAction({
       autoSend: true,
@@ -706,9 +783,11 @@ export function PracticeClient({
         if (cancelled) return;
         if ('error' in result && result.error) {
           setError(result.error);
+          setErrorRecovery('auto-start');
           return;
         }
 
+        setErrorRecovery(null);
         const assistantReply =
           result.reply ||
           'Hi. Let us start this lesson. Answer in one clear sentence.';
@@ -726,6 +805,7 @@ export function PracticeClient({
       .catch((error) => {
         if (cancelled) return;
         setError(getErrorMessage(error) || 'Tutor could not start the lesson.');
+        setErrorRecovery('auto-start');
       })
       .finally(() => {
         if (!cancelled) setAutoStarting(false);
@@ -750,6 +830,7 @@ export function PracticeClient({
     successCriteria,
     teacherName,
     activeTopic,
+    autoStartAttempt,
     tutorTopic,
   ]);
 
@@ -771,6 +852,7 @@ export function PracticeClient({
 
     unlockAudioPlayback();
     setError('');
+    setErrorRecovery(null);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       recordingStreamRef.current = stream;
@@ -789,6 +871,7 @@ export function PracticeClient({
       };
       recorder.onerror = () => {
         setError('Recording failed. You can keep typing instead.');
+        setErrorRecovery(null);
         setRecordingStatus('idle');
         stopRecordingStream();
       };
@@ -808,6 +891,7 @@ export function PracticeClient({
         getErrorMessage(error) ||
           'Microphone permission was denied. You can keep typing instead.'
       );
+      setErrorRecovery(null);
       setRecordingStatus('idle');
       stopRecordingStream();
     }
@@ -850,17 +934,20 @@ export function PracticeClient({
   async function transcribeAudio(audioBlob: Blob) {
     if (audioBlob.size === 0) {
       setError('Recording is empty. Please try again.');
+      setErrorRecovery(null);
       setRecordingStatus('idle');
       return;
     }
 
     setRecordingStatus('transcribing');
     setError('');
+    setErrorRecovery(null);
     try {
       const result = await fetchSpeechTranscript(audioBlob);
       const transcriptText = result.text.trim();
       if (!transcriptText) {
         setError('No speech was detected. Please try again or type instead.');
+        setErrorRecovery(null);
         return;
       }
       const nextText = text.trim()
@@ -873,6 +960,7 @@ export function PracticeClient({
       }
     } catch (error) {
       setError(getErrorMessage(error) || 'Speech transcription failed.');
+      setErrorRecovery(null);
     } finally {
       setRecordingStatus('idle');
     }
@@ -951,6 +1039,7 @@ export function PracticeClient({
     speechRunIdRef.current = speechRunId;
     stopCurrentSpeech();
     setError('');
+    setErrorRecovery(null);
     setSpeakingPhase('loading');
     setSpeakingMessageIndex(messageIndex);
 
@@ -965,11 +1054,12 @@ export function PracticeClient({
         cacheKey,
         markPlaybackStarted
       );
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.warn('aitalk_speech_playback_failed', error);
       const message = getErrorMessage(error) || 'Text-to-speech failed.';
       if (!options.suppressError) {
         setError(message);
+        setErrorRecovery(null);
       }
     } finally {
       if (speechRunIdRef.current === speechRunId) {
@@ -1089,30 +1179,17 @@ export function PracticeClient({
     return parseTranscriptResponse(response);
   }
 
-  function submitText(
-    value: string,
-    options: { ignoreRecordingStatus?: boolean } = {}
+  async function runTutorTurn(
+    nextText: string,
+    nextMessages: PracticeMessage[]
   ) {
-    const nextText = value.trim();
-    if (
-      !nextText ||
-      pending ||
-      autoStarting ||
-      (!options.ignoreRecordingStatus && recordingStatus !== 'idle')
-    ) {
-      return false;
-    }
-    unlockAudioPlayback();
-    const nextMessages: PracticeMessage[] = [
-      ...messages,
-      { role: 'user', content: nextText },
-    ];
-    setMessages(nextMessages);
-    setText('');
-    setError('');
-
+    let replyAdded = false;
     setPending(true);
-    void (async () => {
+    setError('');
+    setErrorRecovery(null);
+    setFailedTutorTurn(null);
+
+    try {
       const result = await askTutorAction({
         chatTopic: tutorTopic,
         conversationMode: activePracticeMode,
@@ -1137,9 +1214,16 @@ export function PracticeClient({
 
       if ('error' in result && result.error) {
         setError(result.error);
+        setErrorRecovery('tutor-turn');
+        setFailedTutorTurn({
+          nextText,
+          transcriptMessages: nextMessages,
+        });
         return;
       }
 
+      setErrorRecovery(null);
+      setFailedTutorTurn(null);
       const assistantReply =
         result.reply ||
         'Good. Try again with one more detail and clearer pronunciation.';
@@ -1151,6 +1235,7 @@ export function PracticeClient({
           content: assistantReply,
         },
       ];
+      replyAdded = true;
       setMessages((current) => [
         ...current,
         {
@@ -1211,14 +1296,73 @@ export function PracticeClient({
       }
 
       void speak(assistantReply, assistantIndex, { interrupt: true });
-    })()
-      .catch((error) => {
+    } catch (error) {
+      if (!replyAdded) {
         setError(getErrorMessage(error) || 'Tutor is unavailable.');
-      })
-      .finally(() => {
-        setPending(false);
-      });
+        setErrorRecovery('tutor-turn');
+        setFailedTutorTurn({
+          nextText,
+          transcriptMessages: nextMessages,
+        });
+      } else {
+        setError(
+          'Your tutor replied, but lesson progress could not be saved. Your conversation is still here.'
+        );
+        setErrorRecovery(null);
+        setFailedTutorTurn(null);
+      }
+    } finally {
+      setPending(false);
+    }
+  }
+
+  function submitText(
+    value: string,
+    options: { ignoreRecordingStatus?: boolean } = {}
+  ) {
+    const nextText = value.trim();
+    if (
+      !nextText ||
+      pending ||
+      autoStarting ||
+      (!options.ignoreRecordingStatus && recordingStatus !== 'idle')
+    ) {
+      return false;
+    }
+    unlockAudioPlayback();
+    const nextMessages: PracticeMessage[] = [
+      ...messages,
+      { role: 'user', content: nextText },
+    ];
+    setMessages(nextMessages);
+    setText('');
+    void runTutorTurn(nextText, nextMessages);
     return true;
+  }
+
+  function retryTutorRequest() {
+    if (pending || autoStarting || recordingStatus !== 'idle') return;
+
+    if (errorRecovery === 'auto-start') {
+      setError('');
+      setErrorRecovery(null);
+      autoStartScopeRef.current = '';
+      setAutoStartAttempt((attempt) => attempt + 1);
+      return;
+    }
+
+    if (failedTutorTurn) {
+      void runTutorTurn(
+        failedTutorTurn.nextText,
+        failedTutorTurn.transcriptMessages
+      );
+    }
+  }
+
+  function dismissError() {
+    setError('');
+    setErrorRecovery(null);
+    setFailedTutorTurn(null);
   }
 
   function submit() {
@@ -1259,9 +1403,45 @@ export function PracticeClient({
     return (
       <>
         {error ? (
-          <p className="mb-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-200">
-            {error}
-          </p>
+          <div
+            role="alert"
+            className="mb-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-200"
+          >
+            <p>{error}</p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {errorRecovery ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-11 rounded-xl border-red-200 bg-white px-3 text-red-700 hover:bg-red-100 dark:border-red-400/30 dark:bg-white/10 dark:text-red-100 dark:hover:bg-white/15"
+                  onClick={retryTutorRequest}
+                  disabled={pending || autoStarting}
+                >
+                  <RotateCcw className="size-4" />
+                  Try again
+                </Button>
+              ) : null}
+              {mobileInputMode === 'voice' ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-11 rounded-xl border-red-200 bg-white px-3 text-red-700 hover:bg-red-100 md:hidden dark:border-red-400/30 dark:bg-white/10 dark:text-red-100 dark:hover:bg-white/15"
+                  onClick={() => setMobileInputMode('text')}
+                >
+                  <Keyboard className="size-4" />
+                  Use text
+                </Button>
+              ) : null}
+              <Button
+                type="button"
+                variant="ghost"
+                className="h-11 rounded-xl px-3 text-red-700 hover:bg-red-100 dark:text-red-100 dark:hover:bg-white/10"
+                onClick={dismissError}
+              >
+                Dismiss
+              </Button>
+            </div>
+          </div>
         ) : null}
         {!speechSupported ? (
           <p className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100">
@@ -1283,7 +1463,10 @@ export function PracticeClient({
   }
 
   return (
-    <div className="mx-auto flex min-h-[100dvh] max-w-5xl flex-col px-4 pt-5 pb-36 md:px-8 md:py-10">
+    <div
+      ref={practiceRootRef}
+      className="mx-auto flex min-h-[100dvh] max-w-5xl flex-col px-4 pt-5 pb-[calc(var(--mobile-composer-height,9rem)+1.5rem)] md:px-8 md:py-10"
+    >
       <div className="rounded-[1.75rem] border border-emerald-950/10 bg-white p-4 shadow-sm md:rounded-3xl md:p-5 dark:border-white/10 dark:bg-white/5">
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
@@ -1347,7 +1530,13 @@ export function PracticeClient({
       ) : null}
 
       <div className="mt-4 flex-1 rounded-[1.75rem] border border-emerald-950/10 bg-white p-3 md:mt-5 md:rounded-3xl md:p-4 dark:border-white/10 dark:bg-white/5">
-        <div className="grid gap-3">
+        <div
+          role="log"
+          aria-label="Practice conversation"
+          aria-live="polite"
+          aria-relevant="additions text"
+          className="grid gap-3"
+        >
           {messages.map((message, index) =>
             message.role === 'user' ? (
               <div
@@ -1375,7 +1564,7 @@ export function PracticeClient({
                     type="button"
                     onClick={() => speak(message.content, index)}
                     disabled={speakingMessageIndex !== null}
-                    className="mt-2 inline-flex items-center gap-1 text-xs font-bold text-emerald-700 dark:text-emerald-300"
+                    className="mt-1 inline-flex min-h-11 items-center gap-1 rounded-lg px-2 text-xs font-bold text-emerald-700 hover:bg-emerald-50 dark:text-emerald-300 dark:hover:bg-emerald-500/10"
                   >
                     {speakingMessageIndex === index ? (
                       speakingPhase === 'loading' ? (
@@ -1408,6 +1597,7 @@ export function PracticeClient({
               Tutor is reading your answer
             </div>
           ) : null}
+          <div ref={messagesEndRef} aria-hidden="true" className="h-px" />
         </div>
       </div>
 
@@ -1453,6 +1643,11 @@ export function PracticeClient({
             disabled={
               autoStarting || pending || recordingStatus === 'transcribing'
             }
+            aria-label={
+              recordingStatus === 'recording'
+                ? 'Stop recording'
+                : 'Start recording'
+            }
           >
             {recordingStatus === 'transcribing' ? (
               <Loader2 className="size-5 animate-spin" />
@@ -1468,6 +1663,7 @@ export function PracticeClient({
             className="size-12 rounded-2xl bg-emerald-500 text-white hover:bg-emerald-600"
             onClick={submit}
             disabled={!canSubmit}
+            aria-label="Send answer"
           >
             {pending ? (
               <Loader2 className="size-5 animate-spin" />
@@ -1478,7 +1674,10 @@ export function PracticeClient({
         </div>
       </div>
 
-      <div className="fixed inset-x-0 bottom-0 z-40 md:hidden">
+      <div
+        ref={mobileComposerRef}
+        className="fixed inset-x-0 bottom-0 z-40 md:hidden"
+      >
         <div className="mx-auto max-w-md px-3 pb-[calc(env(safe-area-inset-bottom)_+_0.75rem)]">
           <div className="rounded-[1.5rem] border border-emerald-950/10 bg-white/95 p-2.5 shadow-xl shadow-emerald-950/10 backdrop-blur dark:border-white/10 dark:bg-zinc-900/95">
             {renderStatusAlerts()}
@@ -1584,6 +1783,8 @@ export function PracticeClient({
                     size="icon"
                     className="size-12 rounded-2xl"
                     onClick={() => setMobileInputMode('voice')}
+                    disabled={!speechSupported}
+                    aria-label="Use voice input"
                   >
                     <Mic className="size-5" />
                   </Button>
