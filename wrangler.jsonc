@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "aitalk-web",
+  "name": "aitalk-web-lp",
   "main": ".open-next/worker.js",
   "compatibility_date": "2026-06-12",
   "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
