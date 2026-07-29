@@ -35,17 +35,12 @@ import { Button } from '@/shared/components/ui/button';
 import { Textarea } from '@/shared/components/ui/textarea';
 import { cn } from '@/shared/lib/utils';
 
-import {
-  buildTopicTutorPrompt,
-  displayLessonTitle,
-  displayTopicPrompt,
-  displayTopicTitle,
-} from '../data';
+import { displayLessonTitle } from '../data';
 import type {
+  FreeTalkTopic,
   LessonListDetail,
   PracticeMessage,
   PracticeMode,
-  TopicExercise,
   TutorCriteriaStatus,
   TutorImprovedSentence,
   TutorPracticeReport,
@@ -58,13 +53,6 @@ type AudioContextWindow = Window &
 
 const TTS_CACHE_DB = 'aitalk-tts-cache-v1';
 const TTS_CACHE_STORE = 'audio';
-
-const TOPIC_SUCCESS_CRITERIA = [
-  'Stay on the selected speaking topic.',
-  'Answer the teacher naturally in the target language.',
-  'Ask or answer at least one relevant follow-up question about the topic.',
-  'Do not switch to unrelated self-introduction practice unless the topic asks for it.',
-];
 
 type SpeechInput = {
   lang: string;
@@ -98,26 +86,6 @@ function getErrorMessage(error: unknown) {
   if (error instanceof Error) return error.message;
   if (typeof error === 'string') return error;
   return '';
-}
-
-function buildTopicTeacherHintInstruction(
-  learnLanguage: string,
-  nativeLanguage: string
-) {
-  return [
-    'TEACHER_HINT_MODE:',
-    'Act as both a realistic conversation partner and a speaking teacher.',
-    `The selected topic is the only speaking scenario. Keep the conversation on this topic unless the learner clearly changes it.`,
-    `In every assistant turn, first respond naturally to the learner previous message in ${learnLanguage}.`,
-    `Then continue the roleplay in ${learnLanguage} with exactly one clear follow-up question or one sentence opening that helps the learner keep speaking about the selected topic.`,
-    'Do not ignore the learner previous sentence or jump to an unrelated topic.',
-    `Then add a brief coach hint in ${nativeLanguage} using the label "Hint:".`,
-    `Under "You can say:", give one short sample reply in ${learnLanguage}.`,
-    'Keep the hint short and beginner-friendly. Do not translate the whole conversation.',
-    'Do not complete the task for the user; give sentence starters or reply options that help the user answer.',
-    'If the user makes a mistake, briefly correct it in the coach hint and give one improved phrase.',
-    'Always leave one clear question or opening for the user to answer next.',
-  ].join(' ');
 }
 
 function parseTutorBoolean(value: unknown) {
@@ -398,7 +366,7 @@ function buildLessonTutorTopic(
     ].join('\n\n');
   }
 
-  if (practiceMode === 'free') {
+  if (practiceMode === 'completed_lesson_free') {
     return [
       context || title,
       'The learner already completed this lesson. Use the lesson as context, but keep the conversation open-ended and natural.',
@@ -409,26 +377,28 @@ function buildLessonTutorTopic(
 }
 
 function resolveLessonMode(practiceMode: PracticeMode) {
-  if (practiceMode === 'topic') return 'free_practice';
-  if (practiceMode === 'free') return 'free_practice_after_complete';
+  if (practiceMode === 'topic_free') return 'free_practice';
+  if (practiceMode === 'completed_lesson_free') {
+    return 'free_practice_after_complete';
+  }
   return 'guided_practice';
 }
 
 function getModeLabel(practiceMode: PracticeMode) {
-  if (practiceMode === 'topic') return 'Topic practice';
+  if (practiceMode === 'topic_free') return 'Free conversation';
   if (practiceMode === 'review') return 'Review';
-  if (practiceMode === 'free') return 'Free talk';
+  if (practiceMode === 'completed_lesson_free') return 'Free talk';
   return 'Guided lesson';
 }
 
 function getModeDescription(practiceMode: PracticeMode) {
-  if (practiceMode === 'topic') {
-    return 'Stay on the selected topic and answer naturally with your tutor.';
+  if (practiceMode === 'topic_free') {
+    return 'Talk naturally at your level. This conversation never changes course progress.';
   }
   if (practiceMode === 'review') {
     return 'Review this completed lesson with a guided conversation.';
   }
-  if (practiceMode === 'free') {
+  if (practiceMode === 'completed_lesson_free') {
     return 'Continue with an open conversation based on this lesson.';
   }
   return 'Follow the lesson goal. Your tutor will lead and complete it when you meet the target.';
@@ -509,7 +479,9 @@ function buildSpeechTranscriptFormData({
 }
 
 export function PracticeClient({
+  conversationTopic,
   learnLanguage,
+  learnerLevel,
   lesson,
   locale,
   nativeLanguage,
@@ -526,11 +498,12 @@ export function PracticeClient({
   teacherAvatarUrl,
   teacherDescription,
   teacherName,
-  topic,
   userId,
   voiceName,
 }: {
+  conversationTopic?: FreeTalkTopic | null;
   learnLanguage: string;
+  learnerLevel: number;
   lesson: LessonListDetail | null;
   locale: string;
   nativeLanguage: string;
@@ -547,16 +520,12 @@ export function PracticeClient({
   teacherAvatarUrl?: string;
   teacherDescription?: string;
   teacherName?: string;
-  topic?: TopicExercise | null;
   userId?: string;
   voiceName?: string;
 }) {
-  const activeTopic = topic ?? null;
-  const activePracticeMode = activeTopic ? 'topic' : practiceMode;
-  const topicInitialPrompt = useMemo(
-    () => displayTopicPrompt(activeTopic),
-    [activeTopic]
-  );
+  const activeTopic = conversationTopic ?? null;
+  const activePracticeMode = practiceMode;
+  const topicInitialPrompt = activeTopic?.openingPrompt ?? '';
   const [messages, setMessages] = useState<PracticeMessage[]>(() =>
     activeTopic
       ? [
@@ -577,7 +546,9 @@ export function PracticeClient({
   const [autoStarting, setAutoStarting] = useState(false);
   const [pending, setPending] = useState(false);
   const [lessonCompleted, setLessonCompleted] = useState(
-    progressStatus === 'completed' || activePracticeMode !== 'guided'
+    progressStatus === 'completed' ||
+      activePracticeMode === 'review' ||
+      activePracticeMode === 'completed_lesson_free'
   );
   const [lessonCompletedInSession, setLessonCompletedInSession] =
     useState(false);
@@ -605,16 +576,15 @@ export function PracticeClient({
   const autoStartScopeRef = useRef('');
 
   const title = useMemo(
-    () =>
-      activeTopic ? displayTopicTitle(activeTopic) : displayLessonTitle(lesson),
+    () => activeTopic?.title ?? displayLessonTitle(lesson),
     [activeTopic, lesson]
   );
   const storageKey = useMemo(() => {
-    if (!userId || !lesson || activePracticeMode === 'topic') return '';
+    if (!userId || !lesson || activePracticeMode === 'topic_free') return '';
     return `aitalk.practice.${userId}.lesson.${lesson.id}.${activePracticeMode}`;
   }, [activePracticeMode, lesson, userId]);
   const practiceScope = useMemo(() => {
-    if (activeTopic) return `topic.${activeTopic.id}`;
+    if (activeTopic) return `topic.${activeTopic.key}`;
     return [
       'lesson',
       lesson?.id ?? 'none',
@@ -622,7 +592,9 @@ export function PracticeClient({
       userId ?? 'anonymous',
     ].join('.');
   }, [activePracticeMode, activeTopic, lesson?.id, userId]);
-  const isLessonPractice = Boolean(lesson && activePracticeMode !== 'topic');
+  const isLessonPractice = Boolean(
+    lesson && activePracticeMode !== 'topic_free'
+  );
   const modeLabel = getModeLabel(activePracticeMode);
   const modeDescription = getModeDescription(activePracticeMode);
   const tutorName = teacherName || 'AITalk tutor';
@@ -635,26 +607,16 @@ export function PracticeClient({
     if (!activeTopic) {
       return buildLessonTutorTopic(title, activePracticeMode, lesson);
     }
-    return [
-      buildTopicTutorPrompt(activeTopic),
-      buildTopicTeacherHintInstruction(learnLanguage, nativeLanguage),
-    ]
-      .filter(Boolean)
-      .join('\n\n');
-  }, [
-    activePracticeMode,
-    activeTopic,
-    learnLanguage,
-    lesson,
-    nativeLanguage,
-    title,
-  ]);
+    return activeTopic.context;
+  }, [activePracticeMode, activeTopic, lesson, title]);
 
   useEffect(() => {
     setText('');
     setError('');
     setLessonCompleted(
-      progressStatus === 'completed' || activePracticeMode !== 'guided'
+      progressStatus === 'completed' ||
+        activePracticeMode === 'review' ||
+        activePracticeMode === 'completed_lesson_free'
     );
     setLessonCompletedInSession(false);
     setCriteriaStatus(
@@ -722,7 +684,9 @@ export function PracticeClient({
     askTutorAction({
       autoSend: true,
       chatTopic: tutorTopic,
+      conversationMode: activePracticeMode,
       learnLanguage,
+      learnerLevel,
       lessonCompleted: activePracticeMode !== 'guided',
       lessonId: lesson?.id,
       lessonMode: resolveLessonMode(activePracticeMode),
@@ -732,6 +696,9 @@ export function PracticeClient({
       successCriteria,
       teacherName,
       text: '',
+      topicContext: activeTopic?.context,
+      topicKey: activeTopic?.key,
+      topicTitle: activeTopic?.title,
       locale,
       messages: [],
     })
@@ -772,6 +739,7 @@ export function PracticeClient({
     hydratedScope,
     isLessonPractice,
     learnLanguage,
+    learnerLevel,
     lesson?.id,
     locale,
     messages.length,
@@ -781,6 +749,7 @@ export function PracticeClient({
     requiredTurns,
     successCriteria,
     teacherName,
+    activeTopic,
     tutorTopic,
   ]);
 
@@ -1146,7 +1115,9 @@ export function PracticeClient({
     void (async () => {
       const result = await askTutorAction({
         chatTopic: tutorTopic,
+        conversationMode: activePracticeMode,
         learnLanguage,
+        learnerLevel,
         lessonCompleted:
           activePracticeMode !== 'guided' || Boolean(lessonCompleted),
         lessonId: activeTopic ? undefined : lesson?.id,
@@ -1154,9 +1125,12 @@ export function PracticeClient({
         nativeLanguage,
         planId: activePracticeMode === 'guided' ? planId : undefined,
         requiredTurns: activeTopic ? 4 : requiredTurns,
-        successCriteria: activeTopic ? TOPIC_SUCCESS_CRITERIA : successCriteria,
+        successCriteria: activeTopic ? [] : successCriteria,
         teacherName,
         text: nextText,
+        topicContext: activeTopic?.context,
+        topicKey: activeTopic?.key,
+        topicTitle: activeTopic?.title,
         locale,
         messages: nextMessages,
       });
@@ -1223,6 +1197,7 @@ export function PracticeClient({
             feedback: report,
             metadata: {
               lessonMode: resolveLessonMode(activePracticeMode),
+              conversationMode: activePracticeMode,
               requiredTurns,
               successCriteria,
               teacherName,
@@ -1322,8 +1297,16 @@ export function PracticeClient({
                 {returnLabel}
               </Link>
             </Button>
-            <div className="text-sm font-bold text-emerald-700 dark:text-emerald-300">
-              {modeLabel}
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-sm font-bold text-emerald-700 dark:text-emerald-300">
+                {modeLabel}
+              </span>
+              <Badge
+                variant="secondary"
+                className="rounded-full bg-emerald-50 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-100"
+              >
+                Level {learnerLevel}
+              </Badge>
             </div>
             <h1 className="mt-2 text-2xl leading-tight font-black tracking-tight md:text-4xl">
               {title}

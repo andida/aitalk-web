@@ -5,6 +5,13 @@ import {
   DEFAULT_LEARN_LANGUAGE,
   DEFAULT_NATIVE_LANGUAGE,
 } from './constants';
+import {
+  buildMissingPlanItems,
+  chooseCurrentLessonId,
+  filterPlanItemsForLessons,
+  getNextSegmentLessonId,
+  levelPlanOrder,
+} from './lib/course-plan';
 import type {
   ActiveLearningPlan,
   AitalkCollect,
@@ -457,7 +464,7 @@ export async function getRecommendedLessons(
     return lessonSort(a) - lessonSort(b);
   });
 
-  return ranked.slice(0, limit).sort((a, b) => lessonSort(a) - lessonSort(b));
+  return ranked.slice(0, limit);
 }
 
 export async function getLessonById(supabase: Client, lessonId: number) {
@@ -548,18 +555,22 @@ export async function createLearningPlanItems(
     plan_id: planId,
     user_id: user.id,
     lesson_id: lesson.id,
-    plan_order: index + 1,
-    status: index === 0 ? 'in_progress' : 'not_started',
-    started_at: index === 0 ? new Date().toISOString() : null,
+    plan_order: levelPlanOrder(
+      lessonLevel(lesson),
+      lesson.sort_order ?? lesson.sortOrder ?? index + 1
+    ),
+    status: 'not_started',
+    started_at: null,
   }));
 
-  const { data, error } = await supabase
+  const { error } = await supabase
     .from('user_learning_plan_items')
-    .upsert(rows, { onConflict: 'plan_id,lesson_id' })
-    .select('*, lesson_list_detail(*)')
-    .order('plan_order', { ascending: true });
+    .upsert(rows, {
+      onConflict: 'plan_id,lesson_id',
+      ignoreDuplicates: true,
+    });
   if (error) throw error;
-  return asArray<UserLearningPlanItem>(data);
+  return getLearningPlanItems(supabase, planId);
 }
 
 export async function getLessonProgress(supabase: Client, lessonId: number) {
@@ -809,15 +820,47 @@ async function advanceLearningPlanAfterLesson(
   lessonId: number
 ) {
   const items = await getLearningPlanItems(supabase, planId);
-  const current = items.find((item) => item.lesson_id === lessonId);
-  if (!current) return;
-  const next = items.find(
-    (item) =>
-      item.plan_order > current.plan_order && item.status !== 'completed'
-  );
-  if (next) {
-    await updateCurrentLearningPlanLesson(supabase, planId, next.lesson_id);
+  const nextLessonId = getNextSegmentLessonId(items, lessonId);
+  if (nextLessonId) {
+    await updateCurrentLearningPlanLesson(supabase, planId, nextLessonId);
   }
+}
+
+async function reconcileLearningPlanItems(
+  supabase: Client,
+  planId: number,
+  profile: AitalkProfile | null,
+  lessons: LessonListDetail[]
+) {
+  const existing = await getLearningPlanItems(supabase, planId);
+  const missing = buildMissingPlanItems(
+    existing,
+    lessons,
+    profile?.level_language
+  );
+
+  if (missing.length > 0) {
+    const user = await requireUser(supabase);
+    const { error } = await supabase.from('user_learning_plan_items').upsert(
+      missing.map((item) => ({
+        ...item,
+        plan_id: planId,
+        user_id: user.id,
+        started_at: null,
+        completed_at: null,
+      })),
+      {
+        onConflict: 'plan_id,lesson_id',
+        ignoreDuplicates: true,
+      }
+    );
+    if (error) throw error;
+  }
+
+  return filterPlanItemsForLessons(
+    await getLearningPlanItems(supabase, planId),
+    lessons
+  );
 }
 
 export async function createOrUpdateLearningPlan(supabase: Client) {
@@ -866,10 +909,12 @@ export async function createOrUpdateLearningPlan(supabase: Client) {
   const plan = first(asArray<UserLearningPlan>(data));
   let items: UserLearningPlanItem[] = [];
   if (plan) {
-    items = await getLearningPlanItems(supabase, plan.id);
-    if (items.length === 0) {
-      items = await createLearningPlanItems(supabase, plan.id, lessons);
-    }
+    items = await reconcileLearningPlanItems(
+      supabase,
+      plan.id,
+      profile,
+      lessons
+    );
   }
 
   const progress = await startLessonProgress(supabase, lesson.id, plan?.id);
@@ -918,17 +963,51 @@ export async function getActiveLearningPlan(
     };
   }
 
-  const lesson = plan.current_lesson_id
-    ? await getLessonById(supabase, plan.current_lesson_id)
-    : ((await getRecommendedLessons(supabase, profile, 1))[0] ?? null);
-  let items = await getLearningPlanItems(supabase, plan.id);
-  if (items.length === 0) {
-    const lessons = await getRecommendedLessons(supabase, profile, 20);
-    items = await createLearningPlanItems(supabase, plan.id, lessons);
+  const lessons = await getRecommendedLessons(supabase, profile, 20);
+  const items = await reconcileLearningPlanItems(
+    supabase,
+    plan.id,
+    profile,
+    lessons
+  );
+  const currentLessonId = chooseCurrentLessonId(items, plan.current_lesson_id);
+  const lesson =
+    items.find((item) => item.lesson_id === currentLessonId)
+      ?.lesson_list_detail ??
+    lessons.find((item) => item.id === currentLessonId) ??
+    null;
+  const desiredPlan = {
+    current_lesson_id: currentLessonId,
+    level: profile?.level_language ?? plan.level,
+    goal: profile?.learning_goal ?? plan.goal,
+    focus: profile?.learning_focus ?? plan.focus,
+    daily_minutes: profile?.daily_study_minutes ?? plan.daily_minutes,
+  };
+  const planChanged = Object.entries(desiredPlan).some(
+    ([key, value]) => plan[key as keyof UserLearningPlan] !== value
+  );
+  let activePlan = plan;
+
+  if (planChanged) {
+    const { data: updatedData, error: updateError } = await supabase
+      .from('user_learning_plans')
+      .update({
+        ...desiredPlan,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', plan.id)
+      .eq('user_id', user.id)
+      .select()
+      .limit(1);
+    if (updateError) throw updateError;
+    activePlan = first(asArray<UserLearningPlan>(updatedData)) ?? {
+      ...plan,
+      ...desiredPlan,
+    };
   }
 
   return {
-    plan,
+    plan: activePlan,
     lesson,
     progress: lesson ? await getLessonProgress(supabase, lesson.id) : null,
     items,
@@ -942,17 +1021,7 @@ export function getNextPlanLessonId(
   activePlan: ActiveLearningPlan | null,
   lessonId: number
 ) {
-  const items = [...(activePlan?.items ?? [])].sort(
-    (a, b) => a.plan_order - b.plan_order
-  );
-  const current = items.find((item) => item.lesson_id === lessonId);
-  if (!current) return null;
-  return (
-    items.find(
-      (item) =>
-        item.plan_order > current.plan_order && item.status !== 'completed'
-    )?.lesson_id ?? null
-  );
+  return getNextSegmentLessonId(activePlan?.items ?? [], lessonId);
 }
 
 export async function getCollectList(

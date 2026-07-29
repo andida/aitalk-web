@@ -1,6 +1,4 @@
 import { redirect } from 'next/navigation';
-import { BookOpen, CalendarDays, MessageCircle, Sparkles } from 'lucide-react';
-
 import {
   displayLessonSubtitle,
   getActiveLearningPlan,
@@ -13,13 +11,12 @@ import {
 import { withLocale } from '@/features/aitalk/lib/paths';
 import { createAitalkServerClient } from '@/features/aitalk/supabase/server';
 import { AitalkAppShell } from '@/features/aitalk/ui/app-shell';
-import {
-  LessonHero,
-  LessonPath,
-} from '@/features/aitalk/ui/lesson-components';
+import { LessonHero, LessonPath } from '@/features/aitalk/ui/lesson-components';
+import { BookOpen, CalendarDays, MessageCircle, Sparkles } from 'lucide-react';
+
+import { Link } from '@/core/i18n/navigation';
 import { Button } from '@/shared/components/ui/button';
 import { Card, CardContent } from '@/shared/components/ui/card';
-import { Link } from '@/core/i18n/navigation';
 
 export default async function AitalkAppPage({
   params,
@@ -60,7 +57,7 @@ export default async function AitalkAppPage({
             asChild
             className="h-11 rounded-xl bg-emerald-500 text-white hover:bg-emerald-600"
           >
-            <Link href="/practice">
+            <Link href="/practice?mode=free">
               <MessageCircle className="size-5" />
               Quick practice
             </Link>
@@ -76,9 +73,21 @@ export default async function AitalkAppPage({
         />
 
         <div className="mt-6 grid gap-4 md:grid-cols-3">
-          <StatCard icon={CalendarDays} label="Study days" value={stats.dayCount} />
-          <StatCard icon={Sparkles} label="Today minutes" value={stats.todayTime} />
-          <StatCard icon={BookOpen} label="Total minutes" value={stats.totalTime} />
+          <StatCard
+            icon={CalendarDays}
+            label="Study days"
+            value={stats.dayCount}
+          />
+          <StatCard
+            icon={Sparkles}
+            label="Today minutes"
+            value={stats.todayTime}
+          />
+          <StatCard
+            icon={BookOpen}
+            label="Total minutes"
+            value={stats.totalTime}
+          />
         </div>
 
         <div className="mt-8 grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
@@ -93,6 +102,7 @@ export default async function AitalkAppPage({
               </Link>
             </div>
             <LessonPath
+              compact
               items={(activePlan?.items ?? []).slice(0, 5)}
               currentLessonId={activePlan?.lesson?.id}
               locale={locale}
@@ -111,7 +121,9 @@ export default async function AitalkAppPage({
                       className="flex items-center gap-3 rounded-2xl bg-emerald-50 p-3 dark:bg-white/10"
                     >
                       <img
-                        src={teacher.avatar_url || teacher.avatarUrl || '/logo.svg'}
+                        src={
+                          teacher.avatar_url || teacher.avatarUrl || '/logo.svg'
+                        }
                         alt={teacher.name}
                         className="size-12 rounded-full object-cover"
                       />
@@ -145,7 +157,10 @@ export default async function AitalkAppPage({
                         {topic.title || topic.name || `Topic ${topic.id}`}
                       </div>
                       <p className="mt-1 line-clamp-2 text-sm text-zinc-600 dark:text-zinc-300">
-                        {topic.desc || topic.description || topic.content || displayLessonSubtitle(activePlan?.lesson ?? null)}
+                        {topic.desc ||
+                          topic.description ||
+                          topic.content ||
+                          displayLessonSubtitle(activePlan?.lesson ?? null)}
                       </p>
                     </div>
                   ))}

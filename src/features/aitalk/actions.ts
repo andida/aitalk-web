@@ -18,9 +18,16 @@ import {
   updateCurrentLearningPlanLesson,
   upsertProfile,
 } from './data';
+import { normalizeLearningLevel } from './lib/course-plan';
+import { normalizeTopicKey, sanitizeTopicText } from './lib/free-talk-topics';
 import { withLocale } from './lib/paths';
 import { createAitalkServerClient } from './supabase/server';
-import type { JsonRecord, OnboardingInput, TutorPracticeReport } from './types';
+import type {
+  ConversationMode,
+  JsonRecord,
+  OnboardingInput,
+  TutorPracticeReport,
+} from './types';
 
 type CompleteLessonAttemptInput = {
   stepId?: number | null;
@@ -268,7 +275,9 @@ export async function signOutAction(locale: string) {
 export async function askTutorAction(input: {
   autoSend?: boolean;
   chatTopic?: string;
+  conversationMode?: ConversationMode;
   learnLanguage?: string;
+  learnerLevel?: number | string;
   lessonCompleted?: boolean;
   lessonId?: number;
   lessonMode?: string;
@@ -278,6 +287,9 @@ export async function askTutorAction(input: {
   successCriteria?: string[];
   teacherName?: string;
   text: string;
+  topicContext?: string;
+  topicKey?: string;
+  topicTitle?: string;
   locale?: string;
   messages?: Array<{ role: string; content: string }>;
 }) {
@@ -287,8 +299,21 @@ export async function askTutorAction(input: {
     return { error: 'Please enter a sentence first.' };
   }
 
+  const allowedModes = new Set<ConversationMode>([
+    'guided',
+    'review',
+    'completed_lesson_free',
+    'topic_free',
+  ]);
+  const conversationMode = allowedModes.has(
+    input.conversationMode as ConversationMode
+  )
+    ? input.conversationMode
+    : undefined;
+
   const data = await invokeCourseTutorAgent(supabase, {
     learn_language: input.learnLanguage,
+    learner_level: normalizeLearningLevel(input.learnerLevel),
     lesson_id: input.lessonId,
     native_language: input.nativeLanguage,
     plan_id: input.planId,
@@ -296,6 +321,10 @@ export async function askTutorAction(input: {
     chat_topic: input.chatTopic,
     lesson_completed: input.lessonCompleted ?? false,
     lesson_mode: input.lessonMode,
+    conversation_mode: conversationMode,
+    topic_key: normalizeTopicKey(input.topicKey) || undefined,
+    topic_title: sanitizeTopicText(input.topicTitle, 80) || undefined,
+    topic_context: sanitizeTopicText(input.topicContext, 800) || undefined,
     required_turns: input.requiredTurns ?? 4,
     success_criteria: input.successCriteria ?? [],
     auto_send: input.autoSend ?? false,

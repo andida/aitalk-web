@@ -284,7 +284,24 @@ export interface PracticeMessage {
   content: string;
 }
 
-export type PracticeMode = 'guided' | 'review' | 'free' | 'topic';
+export type ConversationMode =
+  | 'guided'
+  | 'review'
+  | 'completed_lesson_free'
+  | 'topic_free';
+
+export type PracticeMode = ConversationMode;
+
+export interface FreeTalkTopic {
+  key: string;
+  title: string;
+  description: string;
+  openingPrompt: string;
+  context: string;
+  emoji: string;
+  recommendedLevel: string;
+  minutes: number;
+}
 
 export interface LessonPracticeConfig {
   requiredTurns: number;
