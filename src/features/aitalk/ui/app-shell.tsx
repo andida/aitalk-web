@@ -1,6 +1,8 @@
+import Image from 'next/image';
 import {
   Apple,
   BookOpen,
+  ChevronRight,
   Compass,
   ExternalLink,
   Home,
@@ -9,8 +11,17 @@ import {
 } from 'lucide-react';
 
 import { Link } from '@/core/i18n/navigation';
+import {
+  Avatar,
+  AvatarFallback,
+  AvatarImage,
+} from '@/shared/components/ui/avatar';
 import { Button } from '@/shared/components/ui/button';
 import { cn } from '@/shared/lib/utils';
+
+import { getProfile } from '../data';
+import { resolveAitalkSidebarUser } from '../lib/sidebar-user';
+import { createAitalkServerClient } from '../supabase/server';
 
 const navItems = [
   { href: '/app', label: 'Home', icon: Home },
@@ -23,7 +34,7 @@ const navItems = [
 const IOS_APP_STORE_URL =
   'https://apps.apple.com/us/app/aitalk-ai-language-tutor/id6463466290';
 
-export function AitalkAppShell({
+export async function AitalkAppShell({
   children,
   active,
 }: {
@@ -31,14 +42,25 @@ export function AitalkAppShell({
   active: string;
 }) {
   const hideMobileNav = active === '/practice';
+  const supabase = await createAitalkServerClient();
+  const [profile, authResult] = await Promise.all([
+    getProfile(supabase).catch(() => null),
+    supabase.auth.getUser(),
+  ]);
+  const sidebarUser = resolveAitalkSidebarUser(
+    profile,
+    authResult.data.user ?? null
+  );
 
   return (
     <div className="min-h-[100dvh] bg-[#f6fbf8] text-zinc-950 dark:bg-zinc-950 dark:text-zinc-50">
-      <aside className="fixed inset-y-0 left-0 z-30 hidden w-72 border-r border-emerald-950/10 bg-white/90 px-5 py-5 backdrop-blur md:flex md:flex-col dark:border-white/10 dark:bg-zinc-950/90">
+      <aside className="fixed inset-y-0 left-0 z-30 hidden w-72 overflow-y-auto border-r border-emerald-950/10 bg-white/90 px-5 py-5 backdrop-blur md:flex md:flex-col dark:border-white/10 dark:bg-zinc-950/90">
         <Link href="/app" className="flex items-center gap-3">
-          <img
+          <Image
             src="/logo.svg"
             alt=""
+            width={44}
+            height={44}
             className="size-11 rounded-2xl object-contain shadow-sm"
           />
           <div>
@@ -98,6 +120,42 @@ export function AitalkAppShell({
             </a>
           </Button>
         </div>
+
+        <Link
+          href="/me"
+          aria-label={`Open profile for ${sidebarUser.name}`}
+          className="mt-3 flex min-h-20 items-center gap-3 rounded-2xl border border-emerald-950/10 bg-white p-3 shadow-sm transition-[border-color,background-color] hover:border-emerald-300 hover:bg-emerald-50/70 focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 focus-visible:outline-none dark:border-white/10 dark:bg-white/5 dark:hover:border-emerald-400/50 dark:hover:bg-emerald-500/10"
+        >
+          <Avatar className="size-11 border border-emerald-950/10 bg-emerald-100 dark:border-white/10 dark:bg-emerald-500/20">
+            {sidebarUser.avatarUrl ? (
+              <AvatarImage
+                src={sidebarUser.avatarUrl}
+                alt={`${sidebarUser.name} profile photo`}
+                className="object-cover"
+              />
+            ) : null}
+            <AvatarFallback className="bg-emerald-100 text-sm font-black text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-100">
+              {sidebarUser.initials}
+            </AvatarFallback>
+          </Avatar>
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-sm font-black">
+              {sidebarUser.name}
+            </span>
+            {sidebarUser.email ? (
+              <span className="block truncate text-xs text-zinc-500 dark:text-zinc-400">
+                {sidebarUser.email}
+              </span>
+            ) : null}
+            <span className="mt-0.5 block truncate text-xs font-bold text-emerald-700 dark:text-emerald-300">
+              {sidebarUser.learningSummary}
+            </span>
+          </span>
+          <ChevronRight
+            aria-hidden="true"
+            className="size-4 shrink-0 text-zinc-400"
+          />
+        </Link>
       </aside>
 
       <main
@@ -111,6 +169,7 @@ export function AitalkAppShell({
           {navItems.map((item) => {
             const Icon = item.icon;
             const selected = active === item.href;
+            const isProfile = item.href === '/me';
             return (
               <Link
                 key={item.href}
@@ -122,7 +181,36 @@ export function AitalkAppShell({
                     : 'text-zinc-600 dark:text-zinc-300'
                 )}
               >
-                <Icon className="size-5" />
+                {isProfile ? (
+                  <Avatar
+                    className={cn(
+                      'size-5 border',
+                      selected
+                        ? 'border-white/70'
+                        : 'border-emerald-950/15 dark:border-white/20'
+                    )}
+                  >
+                    {sidebarUser.avatarUrl ? (
+                      <AvatarImage
+                        src={sidebarUser.avatarUrl}
+                        alt=""
+                        className="object-cover"
+                      />
+                    ) : null}
+                    <AvatarFallback
+                      className={cn(
+                        'text-[9px] font-black',
+                        selected
+                          ? 'bg-white/20 text-white'
+                          : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-100'
+                      )}
+                    >
+                      {sidebarUser.initials}
+                    </AvatarFallback>
+                  </Avatar>
+                ) : (
+                  <Icon className="size-5" />
+                )}
                 {item.label}
               </Link>
             );
