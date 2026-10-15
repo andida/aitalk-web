@@ -1,7 +1,14 @@
-import { ArrowRight, Clock3, MessageCircle, ShieldCheck } from 'lucide-react';
+import {
+  ArrowLeft,
+  ArrowRight,
+  Clock3,
+  MessageCircle,
+  ShieldCheck,
+} from 'lucide-react';
 
 import { Link } from '@/core/i18n/navigation';
 import { Badge } from '@/shared/components/ui/badge';
+import { Button } from '@/shared/components/ui/button';
 
 import { FREE_TALK_TOPICS } from '../lib/free-talk-topics';
 
@@ -12,6 +19,12 @@ export function FreeTalkTopicSelector({
 }) {
   return (
     <div className="mx-auto max-w-6xl px-4 py-6 md:px-8 md:py-10">
+      <Button asChild variant="outline" className="mb-5 h-12 rounded-xl">
+        <Link href="/lessons">
+          <ArrowLeft aria-hidden="true" className="size-4" />
+          Back to lessons
+        </Link>
+      </Button>
       <header className="max-w-3xl">
         <div className="flex items-center gap-2 text-sm font-bold text-emerald-700 dark:text-emerald-300">
           <MessageCircle className="size-4" />

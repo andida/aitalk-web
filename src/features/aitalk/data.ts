@@ -495,6 +495,25 @@ export async function getLessonI18n(
   return first(asArray<CourseLessonI18n>(data));
 }
 
+export async function getCourseTranslations(
+  supabase: Client,
+  lessonIds: number[],
+  profile: AitalkProfile | null
+) {
+  const language = profile?.native_language || profile?.native_language_code;
+  if (!language || lessonIds.length === 0)
+    return {} as Record<number, CourseLessonI18n>;
+  const { data, error } = await supabase
+    .from('course_lesson_i18n')
+    .select('*')
+    .in('lesson_id', lessonIds)
+    .eq('native_language', language);
+  if (error) throw error;
+  return Object.fromEntries(
+    asArray<CourseLessonI18n>(data).map((row) => [row.lesson_id, row])
+  );
+}
+
 export async function getLessonSteps(supabase: Client, lessonId: number) {
   const { data, error } = await supabase
     .from('course_lesson_steps')
@@ -646,9 +665,7 @@ export async function startLessonProgress(
   planId?: number | null
 ) {
   const user = await requireUser(supabase);
-  const existing = await getLessonProgress(supabase, lessonId).catch(
-    () => null
-  );
+  const existing = await getLessonProgress(supabase, lessonId);
   const now = new Date().toISOString();
   const isCompleted = existing?.status === 'completed';
   const currentPercent = existing?.progress_percent ?? 0;
@@ -691,9 +708,7 @@ export async function completeLessonProgress(
   }
 ) {
   const user = await requireUser(supabase);
-  const existing = await getLessonProgress(supabase, lessonId).catch(
-    () => null
-  );
+  const existing = await getLessonProgress(supabase, lessonId);
   const now = new Date().toISOString();
   const score =
     typeof options?.score === 'number' && Number.isFinite(options.score)

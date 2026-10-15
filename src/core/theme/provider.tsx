@@ -6,6 +6,8 @@ import { ThemeProvider as NextThemesProvider } from 'next-themes';
 
 import { envConfigs } from '@/config';
 
+import { themeBootstrap } from './bootstrap';
+
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const locale = useLocale();
 
@@ -16,13 +18,24 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   }, [locale]);
 
   return (
-    <NextThemesProvider
-      attribute="class"
-      defaultTheme={envConfigs.appearance}
-      enableSystem
-      disableTransitionOnChange
-    >
-      {children}
-    </NextThemesProvider>
+    <>
+      <script
+        suppressHydrationWarning
+        dangerouslySetInnerHTML={{
+          // Keep this as source text: serializing a function lets server bundlers
+          // inject helpers that are absent from the browser's inline script.
+          __html: themeBootstrap(envConfigs.appearance),
+        }}
+      />
+      <NextThemesProvider
+        scriptProps={{ type: 'application/x-aitalk-theme' }}
+        attribute="class"
+        defaultTheme={envConfigs.appearance}
+        enableSystem
+        disableTransitionOnChange
+      >
+        {children}
+      </NextThemesProvider>
+    </>
   );
 }

@@ -1,4 +1,4 @@
-import { redirect } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 import {
   buildTopicTutorPrompt,
   displayTopicPrompt,
@@ -21,23 +21,12 @@ import {
   sanitizeTopicText,
 } from '@/features/aitalk/lib/free-talk-topics';
 import { withLocale } from '@/features/aitalk/lib/paths';
+import { loadCoursePractice } from '@/features/aitalk/lib/practice-session';
 import { createAitalkServerClient } from '@/features/aitalk/supabase/server';
-import type { FreeTalkTopic, PracticeMode } from '@/features/aitalk/types';
+import type { FreeTalkTopic } from '@/features/aitalk/types';
 import { AitalkAppShell } from '@/features/aitalk/ui/app-shell';
 import { FreeTalkTopicSelector } from '@/features/aitalk/ui/free-talk-topic-selector';
 import { PracticeClient } from '@/features/aitalk/ui/practice-client';
-
-function normalizePracticeMode(
-  requestedMode: string | undefined,
-  isCompleted: boolean,
-  hasLesson: boolean,
-  hasConversationTopic: boolean
-): PracticeMode {
-  if (hasConversationTopic) return 'topic_free';
-  if (!hasLesson) return 'guided';
-  if (!isCompleted) return 'guided';
-  return requestedMode === 'free' ? 'completed_lesson_free' : 'review';
-}
 
 export default async function PracticePage({
   params,
@@ -54,8 +43,13 @@ export default async function PracticePage({
   const { locale } = await params;
   const rawQuery = await searchParams;
   const { lessonId, mode, topicId, topicKey } = parsePracticeQuery(rawQuery);
+  if (
+    (rawQuery.lesson !== undefined && !lessonId) ||
+    (rawQuery.topic !== undefined && !topicId)
+  )
+    notFound();
   const supabase = await createAitalkServerClient();
-  const profile = await getProfile(supabase).catch(() => null);
+  const profile = await getProfile(supabase);
   if (!getProfileCompleteness(profile)) {
     redirect(withLocale('/onboarding', locale));
   }
@@ -70,21 +64,25 @@ export default async function PracticePage({
     );
   }
 
-  const [activePlan, teachers, databaseTopic] = await Promise.all([
+  const [course, teachers, databaseTopic] = await Promise.all([
     localTopic || topicId
       ? Promise.resolve(null)
-      : getActiveLearningPlan(supabase).catch(() => null),
+      : loadCoursePractice(lessonId, rawQuery.mode, {
+          getActivePlan: () => getActiveLearningPlan(supabase),
+          getLesson: (id) => getLessonById(supabase, id),
+          getProgress: (id) => getLessonProgress(supabase, id),
+          getSteps: (id) => getLessonSteps(supabase, id),
+        }),
     getTeachers(supabase, profile?.learn_language || undefined).catch(() => []),
-    topicId
-      ? getTopicExerciseById(supabase, topicId).catch(() => null)
-      : Promise.resolve(null),
+    topicId ? getTopicExerciseById(supabase, topicId) : Promise.resolve(null),
   ]);
-  const lesson =
-    localTopic || topicId
-      ? null
-      : lessonId
-        ? await getLessonById(supabase, lessonId)
-        : (activePlan?.lesson ?? null);
+  if (topicId && !databaseTopic) notFound();
+  if (!localTopic && !topicId && !course) {
+    if (lessonId) notFound();
+    redirect(withLocale('/lessons', locale));
+  }
+  const lesson = course?.lesson ?? null;
+  const activePlan = course?.activePlan ?? null;
   const conversationTopic: FreeTalkTopic | null = localTopic
     ? localTopic
     : databaseTopic
@@ -108,20 +106,9 @@ export default async function PracticePage({
         }
       : null;
   const teacher = teachers[0] ?? null;
-  const [lessonProgress, lessonSteps] = lesson
-    ? await Promise.all([
-        getLessonProgress(supabase, lesson.id).catch(() => null),
-        getLessonSteps(supabase, lesson.id).catch(() => []),
-      ])
-    : [null, []];
-  const isLessonCompleted = lessonProgress?.status === 'completed';
-  const practiceMode = normalizePracticeMode(
-    rawQuery.mode,
-    isLessonCompleted,
-    Boolean(lesson),
-    Boolean(conversationTopic)
-  );
-  const practiceConfig = getLessonPracticeConfig(lessonSteps);
+  const lessonProgress = course?.progress ?? null;
+  const practiceMode = conversationTopic ? 'topic_free' : course!.practiceMode;
+  const practiceConfig = getLessonPracticeConfig(course?.steps ?? []);
   const nextLessonId = lesson
     ? getNextPlanLessonId(activePlan, lesson.id)
     : null;

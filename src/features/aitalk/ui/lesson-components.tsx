@@ -1,6 +1,7 @@
 import { startLessonAction } from '@/features/aitalk/actions';
 import { CheckCircle2, Clock, Flag, PlayCircle } from 'lucide-react';
 
+import { Link } from '@/core/i18n/navigation';
 import { Badge } from '@/shared/components/ui/badge';
 import { Button } from '@/shared/components/ui/button';
 import { Progress } from '@/shared/components/ui/progress';
@@ -22,12 +23,14 @@ export function LessonHero({
   progress,
   plan,
   locale,
+  courseCompleted = false,
 }: {
   lesson: LessonListDetail | null;
   i18n?: CourseLessonI18n | null;
   progress?: UserLessonProgress | null;
   plan?: UserLearningPlan | null;
   locale: string;
+  courseCompleted?: boolean;
 }) {
   const percent = progress?.progress_percent ?? 0;
   return (
@@ -35,7 +38,9 @@ export function LessonHero({
       <div className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
         <div>
           <div className="text-sm font-bold text-emerald-700 dark:text-emerald-300">
-            Today lesson
+            {courseCompleted
+              ? 'Course completed · Keep practicing'
+              : 'Your next lesson'}
           </div>
           <h1 className="mt-2 max-w-3xl text-3xl font-black tracking-tight md:text-5xl">
             {displayLessonTitle(lesson, i18n)}
@@ -62,14 +67,18 @@ export function LessonHero({
           >
             <Button className="h-12 rounded-xl bg-emerald-500 px-6 text-base font-bold text-white hover:bg-emerald-600">
               <PlayCircle className="size-5" />
-              Start
+              {courseCompleted || progress?.status === 'completed'
+                ? 'Review'
+                : progress?.status === 'in_progress'
+                  ? 'Continue'
+                  : 'Start'}
             </Button>
           </form>
         ) : null}
       </div>
       <div className="mt-6">
         <div className="mb-2 flex items-center justify-between text-sm font-bold text-zinc-600 dark:text-zinc-300">
-          <span>Progress</span>
+          <span>Lesson progress</span>
           <span>{percent}%</span>
         </div>
         <Progress
@@ -87,20 +96,31 @@ export function LessonPath({
   currentLessonId,
   locale,
   planId,
+  translations = {},
 }: {
   compact?: boolean;
   items: UserLearningPlanItem[];
   currentLessonId?: number | null;
   locale: string;
   planId?: number | null;
+  translations?: Record<number, CourseLessonI18n>;
 }) {
   if (items.length === 0) {
     return (
       <div className="rounded-3xl border border-dashed border-emerald-950/20 bg-white p-8 text-center dark:border-white/15 dark:bg-white/5">
         <div className="text-lg font-black">No lesson path yet</div>
         <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-300">
-          Complete onboarding to generate a personalized path.
+          There are no lessons available for your learning settings yet. You can
+          practice freely or update your learning level.
         </p>
+        <div className="mt-4 flex flex-wrap justify-center gap-3">
+          <Button asChild>
+            <Link href="/practice?mode=free">Free practice</Link>
+          </Button>
+          <Button asChild variant="outline">
+            <Link href="/me">Learning settings</Link>
+          </Button>
+        </div>
       </div>
     );
   }
@@ -115,7 +135,7 @@ export function LessonPath({
   ).length;
 
   return (
-    <div className="grid gap-5">
+    <div className="grid min-w-0 grid-cols-1 gap-5">
       {!compact ? (
         <div className="flex flex-col gap-3 rounded-3xl border border-emerald-950/10 bg-white p-5 sm:flex-row sm:items-center sm:justify-between dark:border-white/10 dark:bg-white/5">
           <div>
@@ -123,7 +143,8 @@ export function LessonPath({
               Your current course
             </div>
             <div className="mt-1 text-xl font-black">
-              Level {level} · {groups.length} units
+              Level {level} · {groups.length}{' '}
+              {groups.length === 1 ? 'unit' : 'units'}
             </div>
             <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-300">
               A clear path from guided practice to confident conversation.
@@ -139,6 +160,9 @@ export function LessonPath({
       ) : null}
 
       {groups.map((group, groupIndex) => {
+        const unitTranslation = group.items
+          .map((item) => translations[item.lesson_id])
+          .find((item) => item?.unit_name);
         const completedInUnit = group.items.filter(
           (item) => item.status === 'completed'
         ).length;
@@ -161,11 +185,11 @@ export function LessonPath({
                   id={`course-unit-${groupIndex}`}
                   className="mt-1 text-lg font-black"
                 >
-                  {group.name}
+                  {unitTranslation?.unit_name || group.name}
                 </h3>
-                {group.subtitle ? (
+                {unitTranslation?.unit_subtitle || group.subtitle ? (
                   <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-300">
-                    {group.subtitle}
+                    {unitTranslation?.unit_subtitle || group.subtitle}
                   </p>
                 ) : null}
               </div>
@@ -183,11 +207,12 @@ export function LessonPath({
               </div>
             </div>
 
-            <div className="mt-3 grid gap-2">
+            <div className="mt-3 grid min-w-0 grid-cols-1 gap-2">
               {group.items.map((item, lessonIndex) => {
                 const lesson = item.lesson_list_detail;
                 const completed = item.status === 'completed';
-                const current = item.lesson_id === currentLessonId;
+                const current =
+                  !completed && item.lesson_id === currentLessonId;
                 const duration =
                   lesson?.duration_minutes ?? lesson?.durationMinutes ?? 10;
                 return (
@@ -231,7 +256,10 @@ export function LessonPath({
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2">
                           <div className="min-w-0 truncate text-sm font-black sm:text-base">
-                            {displayLessonTitle(lesson ?? null)}
+                            {displayLessonTitle(
+                              lesson ?? null,
+                              translations[item.lesson_id]
+                            )}
                           </div>
                           {current ? (
                             <Badge className="rounded-full bg-emerald-500 text-white">
@@ -240,20 +268,23 @@ export function LessonPath({
                           ) : null}
                         </div>
                         <p className="mt-1 line-clamp-2 text-xs leading-5 text-zinc-600 sm:text-sm dark:text-zinc-300">
-                          {displayLessonSubtitle(lesson ?? null)}
+                          {displayLessonSubtitle(
+                            lesson ?? null,
+                            translations[item.lesson_id]
+                          )}
                         </p>
                       </div>
-                      <div className="hidden shrink-0 text-right sm:block">
+                      <div className="shrink-0 text-right">
                         <div className="inline-flex items-center gap-1 text-xs font-bold text-zinc-500 dark:text-zinc-400">
                           <Clock className="size-3.5" />
                           {duration} min
                         </div>
                         <div className="mt-1 text-xs font-black text-zinc-600 dark:text-zinc-300">
                           {completed
-                            ? 'Completed'
+                            ? 'Review'
                             : current
                               ? 'Continue'
-                              : 'Upcoming'}
+                              : 'Start'}
                         </div>
                       </div>
                     </button>

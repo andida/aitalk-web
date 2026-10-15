@@ -24,6 +24,7 @@
     "build:fast": "NODE_OPTIONS='--max-old-space-size=4096' next build",
     "start": "next start",
     "lint": "eslint .",
+    "test:aitalk:ui": "node --import tsx --test src/features/aitalk/ui/free-talk-topic-selector.test.tsx",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "db:generate": "tsx scripts/with-env.ts npx drizzle-kit generate --config=src/core/db/config.ts",
@@ -50,7 +51,7 @@
     "cf:deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
     "cf:upload": "opennextjs-cloudflare build && opennextjs-cloudflare upload",
     "cf:typegen": "wrangler types --env-interface CloudflareEnv src/shared/types/cloudflare.d.ts",
-    "test:aitalk": "tsx --test src/features/aitalk/lib/course-plan.test.ts src/features/aitalk/lib/free-talk-topics.test.ts src/features/aitalk/lib/sidebar-user.test.ts"
+    "test:aitalk": "tsx --test src/features/aitalk/lib/course-plan.test.ts src/features/aitalk/lib/free-talk-topics.test.ts src/features/aitalk/lib/sidebar-user.test.ts src/features/aitalk/lib/lesson-data.test.ts src/features/aitalk/lib/practice-session.test.ts src/features/aitalk/lib/tutor-completion.test.ts src/core/theme/bootstrap.test.ts"
   },
   "dependencies": {
     "@ai-sdk/react": "^2.0.89",

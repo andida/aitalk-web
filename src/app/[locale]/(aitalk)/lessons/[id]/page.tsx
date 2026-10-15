@@ -2,7 +2,6 @@ import { notFound, redirect } from 'next/navigation';
 import {
   displayLessonSubtitle,
   displayLessonTitle,
-  getActiveLearningPlan,
   getLatestLessonAttempt,
   getLessonById,
   getLessonI18n,
@@ -11,7 +10,6 @@ import {
   getLessonSteps,
   getProfile,
   getProfileCompleteness,
-  startLessonProgress,
 } from '@/features/aitalk/data';
 import { withLocale } from '@/features/aitalk/lib/paths';
 import { createAitalkServerClient } from '@/features/aitalk/supabase/server';
@@ -20,13 +18,13 @@ import type {
   CourseStepContent,
   JsonRecord,
   LessonAttempt,
+  LessonListDetail,
   TutorCriteriaStatus,
   TutorPracticeReport,
 } from '@/features/aitalk/types';
 import { AitalkAppShell } from '@/features/aitalk/ui/app-shell';
 import {
   ArrowLeft,
-  CheckCircle2,
   CircleDot,
   MessageCircle,
   RotateCcw,
@@ -43,34 +41,25 @@ export default async function LessonDetailPage({
   params: Promise<{ locale: string; id: string }>;
 }) {
   const { locale, id } = await params;
-  const lessonId = Number.parseInt(id, 10);
-  if (!Number.isFinite(lessonId)) notFound();
+  const lessonId = Number(id);
+  if (!/^[1-9]\d*$/.test(id) || !Number.isSafeInteger(lessonId)) notFound();
 
   const supabase = await createAitalkServerClient();
-  const profile = await getProfile(supabase).catch(() => null);
+  const profile = await getProfile(supabase);
   if (!getProfileCompleteness(profile)) {
     redirect(withLocale('/onboarding', locale));
   }
 
-  const activePlan = await getActiveLearningPlan(supabase).catch(() => null);
   const lesson = await getLessonById(supabase, lessonId);
   if (!lesson) notFound();
 
-  if (activePlan?.plan?.id) {
-    await startLessonProgress(supabase, lessonId, activePlan.plan.id).catch(
-      () => null
-    );
-  }
-
   const [i18n, steps, progress, latestAttempt] = await Promise.all([
-    getLessonI18n(supabase, lessonId, profile).catch(() => null),
-    getLessonSteps(supabase, lessonId).catch(() => []),
-    getLessonProgress(supabase, lessonId).catch(() => null),
-    getLatestLessonAttempt(supabase, lessonId).catch(() => null),
+    getLessonI18n(supabase, lessonId, profile),
+    getLessonSteps(supabase, lessonId),
+    getLessonProgress(supabase, lessonId),
+    getLatestLessonAttempt(supabase, lessonId),
   ]);
-  const stepI18n = await getLessonStepI18nMap(supabase, steps, profile).catch(
-    () => new Map()
-  );
+  const stepI18n = await getLessonStepI18nMap(supabase, steps, profile);
   const isCompleted = progress?.status === 'completed';
 
   return (
@@ -80,7 +69,11 @@ export default async function LessonDetailPage({
           <div className="flex flex-col gap-5 md:flex-row md:items-start md:justify-between">
             <div>
               <Badge className="rounded-full bg-emerald-500 text-white">
-                {isCompleted ? 'Completed' : 'In progress'}
+                {isCompleted
+                  ? 'Completed'
+                  : progress?.status === 'in_progress'
+                    ? 'In progress'
+                    : 'Not started'}
               </Badge>
               <h1 className="mt-4 text-3xl font-black tracking-tight md:text-5xl">
                 {displayLessonTitle(lesson, i18n)}
@@ -129,7 +122,9 @@ export default async function LessonDetailPage({
                 >
                   <Link href={`/practice?lesson=${lesson.id}`}>
                     <MessageCircle className="size-5" />
-                    Continue practice
+                    {progress?.status === 'in_progress'
+                      ? 'Continue practice'
+                      : 'Start practice'}
                   </Link>
                 </Button>
               )}
@@ -558,7 +553,7 @@ function stringifyContent(content: unknown) {
   return String(content);
 }
 
-function fallbackSteps(lesson: any): CourseLessonStep[] {
+function fallbackSteps(lesson: LessonListDetail): CourseLessonStep[] {
   return [
     {
       id: 0,

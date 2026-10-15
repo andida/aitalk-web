@@ -1,6 +1,6 @@
 import fs from 'node:fs';
-import path from 'node:path';
 import { createRequire } from 'node:module';
+import path from 'node:path';
 
 const require = createRequire(import.meta.url);
 const root = process.cwd();
@@ -50,9 +50,9 @@ function escapeRegExp(value) {
 }
 
 function hasConfigKey(key) {
-  return new RegExp(`(?:"${escapeRegExp(key)}"|${escapeRegExp(key)})\\s*[:=]`).test(
-    wranglerText
-  );
+  return new RegExp(
+    `(?:"${escapeRegExp(key)}"|${escapeRegExp(key)})\\s*[:=]`
+  ).test(wranglerText);
 }
 
 function hasConfigValue(key, value) {
@@ -97,8 +97,8 @@ addCheck(
 
 addCheck(
   'Wrangler config has worker name',
-  hasConfigValue('name', 'siterise'),
-  'expected name = "siterise"'
+  hasConfigValue('name', 'aitalk-web'),
+  'expected name = "aitalk-web"'
 );
 
 addCheck(
@@ -119,7 +119,7 @@ addCheck(
 addCheck(
   'Wrangler config has WORKER_SELF_REFERENCE service binding',
   hasConfigValue('binding', 'WORKER_SELF_REFERENCE') &&
-    hasConfigValue('service', 'siterise'),
+    hasConfigValue('service', 'aitalk-web'),
   'required by OpenNext Cloudflare worker self-fetches'
 );
 
@@ -176,7 +176,7 @@ addCheck(
     ? 'set in shell'
     : remoteSecretsConfirmed
       ? 'confirmed as Cloudflare secret'
-    : 'set via wrangler secret put SEMRUSH_API_KEY'
+      : 'set via wrangler secret put SEMRUSH_API_KEY'
 );
 
 addCheck(
@@ -190,7 +190,7 @@ addCheck(
     ? 'env detected'
     : cloudflareAuthConfirmed
       ? 'wrangler auth confirmed'
-    : 'run npx wrangler login or set CLOUDFLARE_API_TOKEN'
+      : 'run npx wrangler login or set CLOUDFLARE_API_TOKEN'
 );
 
 let failed = 0;

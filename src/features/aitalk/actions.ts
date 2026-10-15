@@ -11,6 +11,12 @@ import {
 import {
   completeLessonProgress,
   createOrUpdateLearningPlan,
+  getLearningPlanItems,
+  getLessonById,
+  getLessonPracticeConfig,
+  getLessonProgress,
+  getLessonSteps,
+  getProfile,
   getTextSpeech,
   insertLessonAttempt,
   invokeCourseTutorAgent,
@@ -21,23 +27,9 @@ import {
 import { normalizeLearningLevel } from './lib/course-plan';
 import { normalizeTopicKey, sanitizeTopicText } from './lib/free-talk-topics';
 import { withLocale } from './lib/paths';
+import { resolveTutorMode, saveTutorCompletion } from './lib/tutor-completion';
 import { createAitalkServerClient } from './supabase/server';
-import type {
-  ConversationMode,
-  JsonRecord,
-  OnboardingInput,
-  TutorPracticeReport,
-} from './types';
-
-type CompleteLessonAttemptInput = {
-  stepId?: number | null;
-  transcript?: string | null;
-  audioUrl?: string | null;
-  durationSeconds?: number | null;
-  scores?: JsonRecord | null;
-  feedback?: TutorPracticeReport | JsonRecord | null;
-  metadata?: JsonRecord | null;
-};
+import type { ConversationMode, OnboardingInput } from './types';
 
 const WINDOWS_1252_REVERSE_MAP: Record<number, number> = {
   0x20ac: 0x80,
@@ -211,59 +203,16 @@ export async function startLessonAction(
   planId?: number | null
 ) {
   const supabase = await createAitalkServerClient();
+  const progress = await getLessonProgress(supabase, lessonId);
+  if (progress?.status === 'completed') {
+    redirect(withLocale(`/lessons/${lessonId}`, locale));
+  }
   if (planId) {
     await updateCurrentLearningPlanLesson(supabase, planId, lessonId);
   }
   await startLessonProgress(supabase, lessonId, planId);
   revalidatePath(withLocale('/lessons', locale));
   redirect(withLocale(`/lessons/${lessonId}`, locale));
-}
-
-export async function completeLessonAction(
-  locale: string,
-  lessonId: number,
-  planId?: number | null
-) {
-  const supabase = await createAitalkServerClient();
-  await completeLessonProgress(supabase, lessonId, planId);
-  revalidatePath(withLocale('/lessons', locale));
-  revalidatePath(withLocale(`/lessons/${lessonId}`, locale));
-}
-
-export async function completeLessonFromPracticeAction(input: {
-  lessonId: number;
-  locale: string;
-  planId?: number | null;
-  attempt?: CompleteLessonAttemptInput | null;
-}) {
-  const supabase = await createAitalkServerClient();
-  let score: number | null = null;
-  if (input.attempt) {
-    await insertLessonAttempt(supabase, {
-      lessonId: input.lessonId,
-      stepId: input.attempt.stepId,
-      planId: input.planId,
-      practiceType: 'guided_roleplay',
-      transcript: input.attempt.transcript,
-      audioUrl: input.attempt.audioUrl,
-      durationSeconds: input.attempt.durationSeconds,
-      scores: input.attempt.scores,
-      feedback: input.attempt.feedback,
-      metadata: input.attempt.metadata,
-    });
-    const rawScore = input.attempt.scores?.overall;
-    score = typeof rawScore === 'number' ? rawScore : Number(rawScore);
-    if (!Number.isFinite(score)) score = null;
-  }
-
-  await completeLessonProgress(supabase, input.lessonId, input.planId, {
-    score,
-    countAttempt: Boolean(input.attempt),
-  });
-  revalidatePath(withLocale('/lessons', input.locale));
-  revalidatePath(withLocale(`/lessons/${input.lessonId}`, input.locale));
-  revalidatePath(withLocale('/app', input.locale));
-  return { ok: true };
 }
 
 export async function signOutAction(locale: string) {
@@ -299,48 +248,128 @@ export async function askTutorAction(input: {
     return { error: 'Please enter a sentence first.' };
   }
 
-  const allowedModes = new Set<ConversationMode>([
-    'guided',
-    'review',
-    'completed_lesson_free',
-    'topic_free',
-  ]);
-  const conversationMode = allowedModes.has(
-    input.conversationMode as ConversationMode
-  )
-    ? input.conversationMode
-    : undefined;
+  let conversationMode = resolveTutorMode(input.conversationMode, false);
+  const profile = await getProfile(supabase);
+  let lessonId: number | undefined;
+  let planId: number | undefined;
+  let lessonCompleted = false;
+  let practiceConfig = { requiredTurns: 4, successCriteria: [] as string[] };
+  if (conversationMode !== 'topic_free') {
+    if (
+      !input.lessonId ||
+      !Number.isSafeInteger(input.lessonId) ||
+      input.lessonId < 1
+    ) {
+      return { error: 'Please select a valid lesson.' };
+    }
+    lessonId = input.lessonId;
+    if (!(await getLessonById(supabase, lessonId)))
+      return { error: 'Lesson not found.' };
+    const [progress, steps] = await Promise.all([
+      getLessonProgress(supabase, lessonId),
+      getLessonSteps(supabase, lessonId),
+    ]);
+    lessonCompleted = progress?.status === 'completed';
+    conversationMode = resolveTutorMode(conversationMode, lessonCompleted);
+    practiceConfig = getLessonPracticeConfig(steps);
+    if (conversationMode === 'guided' && input.planId) {
+      if (!Number.isSafeInteger(input.planId) || input.planId < 1)
+        return { error: 'Invalid learning plan.' };
+      const items = await getLearningPlanItems(supabase, input.planId);
+      if (!items.some((item) => item.lesson_id === lessonId))
+        return { error: 'Lesson is not in your learning plan.' };
+      planId = input.planId;
+    }
+  }
+  const messages = (input.messages ?? [])
+    .filter(
+      (message) => message.role === 'user' || message.role === 'assistant'
+    )
+    .slice(-100)
+    .map((message) => ({
+      role: message.role,
+      content: message.content.slice(0, 4000),
+    }));
 
   const data = await invokeCourseTutorAgent(supabase, {
     learn_language: input.learnLanguage,
-    learner_level: normalizeLearningLevel(input.learnerLevel),
-    lesson_id: input.lessonId,
+    learner_level: normalizeLearningLevel(profile?.level_language),
+    lesson_id: lessonId,
     native_language: input.nativeLanguage,
-    plan_id: input.planId,
+    plan_id: planId,
     teacher_name: input.teacherName,
     chat_topic: input.chatTopic,
-    lesson_completed: input.lessonCompleted ?? false,
-    lesson_mode: input.lessonMode,
+    lesson_completed: lessonCompleted,
+    lesson_mode:
+      conversationMode === 'guided' || conversationMode === 'review'
+        ? 'guided_practice'
+        : conversationMode === 'completed_lesson_free'
+          ? 'free_practice_after_complete'
+          : 'free_practice',
     conversation_mode: conversationMode,
     topic_key: normalizeTopicKey(input.topicKey) || undefined,
     topic_title: sanitizeTopicText(input.topicTitle, 80) || undefined,
     topic_context: sanitizeTopicText(input.topicContext, 800) || undefined,
-    required_turns: input.requiredTurns ?? 4,
-    success_criteria: input.successCriteria ?? [],
+    required_turns: practiceConfig.requiredTurns,
+    success_criteria: practiceConfig.successCriteria,
     auto_send: input.autoSend ?? false,
     labels: {
       hint: 'Hint',
       you_can_say: 'You can say',
     },
     message: text,
-    messages: input.messages ?? [],
+    messages,
     source: 'web',
   });
 
   const normalizedData = normalizeTutorPayload(data);
   const reply = resolveTutorReply(normalizedData);
 
-  return { reply, raw: normalizedData };
+  let completionError: string | undefined;
+  const completion = await saveTutorCompletion(
+    {
+      mode: conversationMode,
+      autoSend: Boolean(input.autoSend),
+      raw: normalizedData,
+      criteria: practiceConfig.successCriteria,
+    },
+    {
+      getProgress: () => getLessonProgress(supabase, lessonId!),
+      saveReport: async (report) => {
+        await insertLessonAttempt(supabase, {
+          lessonId: lessonId!,
+          planId,
+          practiceType: 'guided_roleplay',
+          transcript: JSON.stringify([
+            ...messages,
+            { role: 'assistant', content: reply },
+          ]),
+          scores: { overall: report.score },
+          feedback: report,
+          metadata: {
+            conversationMode: 'guided',
+            source: 'server-tutor-result',
+          },
+        });
+      },
+      complete: async (report) => {
+        await completeLessonProgress(supabase, lessonId!, planId, {
+          score: report.score,
+          countAttempt: true,
+        });
+      },
+    }
+  ).catch(() => {
+    completionError =
+      'Your tutor replied, but lesson progress could not be saved. Please try again.';
+    return null;
+  });
+  if (completion) {
+    revalidatePath(withLocale('/lessons', input.locale || 'en'));
+    revalidatePath(withLocale(`/lessons/${lessonId}`, input.locale || 'en'));
+    revalidatePath(withLocale('/app', input.locale || 'en'));
+  }
+  return { reply, raw: normalizedData, completion, completionError };
 }
 
 export async function textSpeechAction(input: {
