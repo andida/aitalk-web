@@ -1,6 +1,6 @@
 import { revalidateTag, unstable_cache } from 'next/cache';
 
-import { db } from '@/core/db';
+import { db, type DatabaseSession } from '@/core/db';
 import { envConfigs } from '@/config';
 import { config } from '@/config/db/schema';
 import { isCloudflareWorker } from '@/shared/lib/env';
@@ -40,8 +40,8 @@ export async function saveConfigs(configs: Record<string, string>) {
   }
 
   // Other databases: use transaction for atomicity
-  const result = await database.transaction(async (tx: any) => {
-    const results: any[] = [];
+  const result = await database.transaction(async (tx: DatabaseSession) => {
+    const results: Config[] = [];
 
     for (const [name, configValue] of configEntries) {
       const [upsertResult] = await tx
@@ -135,7 +135,7 @@ export async function getAllConfigs(): Promise<Configs> {
 }
 
 export async function getPublicConfigs(): Promise<Configs> {
-  let allConfigs = await getAllConfigs();
+  const allConfigs = await getAllConfigs();
 
   const publicConfigs: Record<string, string> = {};
 

@@ -4,28 +4,27 @@ import { Checkbox as CheckboxComponent } from '@/shared/components/ui/checkbox';
 import { Label } from '@/shared/components/ui/label';
 import { FormField } from '@/shared/types/blocks/form';
 
+import { isStringArray } from './value';
+
 export function Checkbox({
   field,
   formField,
-  data,
 }: {
   field: FormField;
   formField: ControllerRenderProps<Record<string, unknown>, string>;
-  data?: any;
+  data?: unknown;
 }) {
   // initial value
-  let value = (formField.value as string[]) || [];
+  let initialValue: unknown = formField.value;
 
-  if (typeof value === 'string') {
+  if (typeof initialValue === 'string') {
     try {
-      const jsonValue = JSON.parse(value);
-      if (Array.isArray(jsonValue)) {
-        value = jsonValue;
-      }
-    } catch (error) {
-      console.error('checkbox initial value parse error', error);
+      initialValue = JSON.parse(initialValue);
+    } catch {
+      initialValue = undefined;
     }
   }
+  const value = isStringArray(initialValue) ? initialValue : [];
 
   const handleCheckboxChange = (optionValue: string, checked: boolean) => {
     let newValue: string[];
@@ -43,11 +42,11 @@ export function Checkbox({
 
   return (
     <div className="flex flex-col gap-4 py-2">
-      {field.options?.map((option: any) => (
+      {field.options?.map((option) => (
         <div key={option.value} className="flex items-start gap-4">
           <CheckboxComponent
             onCheckedChange={(checked) =>
-              handleCheckboxChange(option.value, checked as boolean)
+              handleCheckboxChange(option.value, checked === true)
             }
             name={field.name}
             value={option.value}

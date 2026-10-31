@@ -18,7 +18,7 @@ export function ShowcasesFlow({
   section: Section;
   className?: string;
 }) {
-  const groups = (section as any).groups || [];
+  const groups = section.groups || [];
   const [selectedGroup, setSelectedGroup] = useState<string>(
     groups.length > 0 ? groups[0].name : ''
   );
@@ -192,27 +192,25 @@ export function ShowcasesFlow({
                     {item.description}
                   </p>
                 )} */}
-                {(item as any).button && (
+                {item.button && (
                   <div
                     className="mt-3 translate-y-4 transition-transform delay-100 duration-300 group-hover:translate-y-0"
                     onClick={(e) => e.stopPropagation()}
                   >
                     <Button
                       asChild
-                      variant={(item as any).button.variant || 'default'}
-                      size={(item as any).button.size || 'sm'}
+                      variant={item.button.variant || 'default'}
+                      size={item.button.size || 'sm'}
                       className="bg-primary hover:bg-primary/90 text-primary-foreground h-8 w-full border-0 px-1 py-1.5 text-sm font-medium"
                     >
                       <Link
-                        href={(item as any).button.url || ''}
-                        target={(item as any).button.target || '_self'}
+                        href={item.button.url || ''}
+                        target={item.button.target || '_self'}
                       >
-                        {(item as any).button.icon && (
-                          <SmartIcon
-                            name={(item as any).button.icon as string}
-                          />
+                        {item.button.icon && (
+                          <SmartIcon name={item.button.icon as string} />
                         )}
-                        {(item as any).button.title}
+                        {item.button.title}
                       </Link>
                     </Button>
                   </div>
@@ -295,41 +293,37 @@ export function ShowcasesFlow({
                         {filteredItems[selectedIndex].description}
                       </p>
                     )}
-                    {(filteredItems[selectedIndex] as any).button && (
+                    {filteredItems[selectedIndex].button && (
                       <div className="mt-4">
                         <Button
                           asChild
                           variant={
-                            (filteredItems[selectedIndex] as any).button
-                              .variant || 'default'
+                            filteredItems[selectedIndex].button.variant ||
+                            'default'
                           }
                           size={
-                            (filteredItems[selectedIndex] as any).button.size ||
+                            filteredItems[selectedIndex].button.size ||
                             'default'
                           }
                           className="bg-primary hover:bg-primary/90 h-8 border-0 px-3 py-1.5 text-sm font-medium text-white"
                         >
                           <Link
-                            href={
-                              (filteredItems[selectedIndex] as any).button
-                                .url || ''
-                            }
+                            href={filteredItems[selectedIndex].button.url || ''}
                             target={
-                              (filteredItems[selectedIndex] as any).button
-                                .target || '_self'
+                              filteredItems[selectedIndex].button.target ||
+                              '_self'
                             }
                           >
-                            {(filteredItems[selectedIndex] as any).button
-                              .icon && (
+                            {filteredItems[selectedIndex].button.icon && (
                               <SmartIcon
                                 name={
-                                  (filteredItems[selectedIndex] as any).button
+                                  filteredItems[selectedIndex].button
                                     .icon as string
                                 }
                                 className="text-white"
                               />
                             )}
-                            {(filteredItems[selectedIndex] as any).button.title}
+                            {filteredItems[selectedIndex].button.title}
                           </Link>
                         </Button>
                       </div>

@@ -19,12 +19,12 @@ export function getPostgresDb() {
       : {};
 
   if (isCloudflareWorker) {
-    const { env }: { env: any } = { env: {} };
+    const { env }: { env: { HYPERDRIVE?: { connectionString: string } } } = { env: {} };
     // Detect if set Hyperdrive
     isHyperdrive = 'HYPERDRIVE' in env;
 
     if (isHyperdrive) {
-      const hyperdrive = env.HYPERDRIVE;
+      const hyperdrive = env.HYPERDRIVE!;
       databaseUrl = hyperdrive.connectionString;
       console.log('using Hyperdrive connection');
     }

@@ -35,6 +35,7 @@ import {
   SelectValue,
 } from "@/shared/components/ui/select";
 import { cn } from "@/shared/lib/utils";
+import { useHydrated } from "@/shared/hooks/use-hydrated";
 import type { ChatStatus, FileUIPart } from "ai";
 import {
   CornerDownLeftIcon,
@@ -1024,13 +1025,13 @@ interface SpeechRecognition extends EventTarget {
   lang: string;
   start(): void;
   stop(): void;
-  onstart: ((this: SpeechRecognition, ev: Event) => any) | null;
-  onend: ((this: SpeechRecognition, ev: Event) => any) | null;
+  onstart: ((this: SpeechRecognition, ev: Event) => void) | null;
+  onend: ((this: SpeechRecognition, ev: Event) => void) | null;
   onresult:
-    | ((this: SpeechRecognition, ev: SpeechRecognitionEvent) => any)
+    | ((this: SpeechRecognition, ev: SpeechRecognitionEvent) => void)
     | null;
   onerror:
-    | ((this: SpeechRecognition, ev: SpeechRecognitionErrorEvent) => any)
+    | ((this: SpeechRecognition, ev: SpeechRecognitionErrorEvent) => void)
     | null;
 }
 
@@ -1085,9 +1086,9 @@ export const PromptInputSpeechButton = ({
   ...props
 }: PromptInputSpeechButtonProps) => {
   const [isListening, setIsListening] = useState(false);
-  const [recognition, setRecognition] = useState<SpeechRecognition | null>(
-    null
-  );
+  const hydrated = useHydrated();
+  const speechSupported = hydrated && typeof window !== "undefined" &&
+    Boolean(window.SpeechRecognition || window.webkitSpeechRecognition);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
 
   useEffect(() => {
@@ -1145,17 +1146,18 @@ export const PromptInputSpeechButton = ({
       };
 
       recognitionRef.current = speechRecognition;
-      setRecognition(speechRecognition);
     }
 
     return () => {
       if (recognitionRef.current) {
         recognitionRef.current.stop();
+        recognitionRef.current = null;
       }
     };
   }, [textareaRef, onTranscriptionChange]);
 
   const toggleListening = useCallback(() => {
+    const recognition = recognitionRef.current;
     if (!recognition) {
       return;
     }
@@ -1165,7 +1167,7 @@ export const PromptInputSpeechButton = ({
     } else {
       recognition.start();
     }
-  }, [recognition, isListening]);
+  }, [isListening]);
 
   return (
     <PromptInputButton
@@ -1174,7 +1176,7 @@ export const PromptInputSpeechButton = ({
         isListening && "animate-pulse bg-accent text-accent-foreground",
         className
       )}
-      disabled={!recognition}
+      disabled={!speechSupported}
       onClick={toggleListening}
       {...props}
     >
@@ -1186,11 +1188,7 @@ export const PromptInputSpeechButton = ({
 export type PromptInputSelectProps = ComponentProps<typeof Select>;
 
 export const PromptInputSelect = (props: PromptInputSelectProps) => {
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
+  const mounted = useHydrated();
 
   if (!mounted) {
     return null;

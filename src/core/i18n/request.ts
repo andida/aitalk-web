@@ -1,3 +1,4 @@
+import type { AbstractIntlMessages } from 'next-intl';
 import { getRequestConfig } from 'next-intl/server';
 
 import {
@@ -49,19 +50,21 @@ export default getRequestConfig(async ({ requestLocale }) => {
     );
 
     // merge all local messages
-    const messages: any = {};
+    const messages: AbstractIntlMessages = {};
 
     localeMessagesPaths.forEach((path, index) => {
-      const localMessages = allMessages[index];
+      const localMessages = allMessages[index] as AbstractIntlMessages;
 
       const keys = path.split('/');
       let current = messages;
 
       for (let i = 0; i < keys.length - 1; i++) {
-        if (!current[keys[i]]) {
-          current[keys[i]] = {};
+        const key = keys[i];
+        const child = current[key];
+        if (!child || typeof child !== 'object' || Array.isArray(child)) {
+          current[key] = {};
         }
-        current = current[keys[i]];
+        current = current[key] as AbstractIntlMessages;
       }
 
       current[keys[keys.length - 1]] = localMessages;

@@ -39,6 +39,7 @@ import {
 import { Switch } from '@/shared/components/ui/switch';
 import { Textarea } from '@/shared/components/ui/textarea';
 import { useAppContext } from '@/shared/contexts/app';
+import { useHydrated } from '@/shared/hooks/use-hydrated';
 import { cn } from '@/shared/lib/utils';
 
 interface SongData {
@@ -109,11 +110,7 @@ export function MusicGenerator({ className, srOnlyTitle }: SongGeneratorProps) {
   const costCredits = 10;
 
   // Client-side mounting state to prevent hydration mismatch
-  const [isMounted, setIsMounted] = useState(false);
-
-  useEffect(() => {
-    setIsMounted(true);
-  }, []);
+  const isMounted = useHydrated();
 
   // Task polling
   const pollTaskStatus = async (taskId: string) => {
@@ -217,12 +214,15 @@ export function MusicGenerator({ className, srOnlyTitle }: SongGeneratorProps) {
       // Still processing - update progress
       setProgress((prev) => Math.min(prev + 3, 80));
       return false;
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error polling task:', error);
       setIsGenerating(false);
       setProgress(0);
       setGenerationStartTime(null);
-      toast.error('Create song failed: ' + error.message);
+      toast.error(
+        'Create song failed: ' +
+          (error instanceof Error ? error.message : 'Unknown error')
+      );
 
       fetchUserCredits();
 
@@ -276,30 +276,6 @@ export function MusicGenerator({ className, srOnlyTitle }: SongGeneratorProps) {
       }
     }
 
-    const params: any = {
-      mediaType: 'music',
-      provider: provider,
-      model: model,
-    };
-
-    if (customMode) {
-      params.options = {
-        customMode: true,
-        style,
-        title,
-        instrumental,
-      };
-      if (!instrumental) {
-        params.options.lyrics = lyrics;
-      }
-    } else {
-      params.prompt = prompt;
-      params.options = {
-        customMode: false,
-        instrumental,
-      };
-    }
-
     setIsGenerating(true);
     setProgress(10);
     setGeneratedSongs([]);
@@ -346,8 +322,11 @@ export function MusicGenerator({ className, srOnlyTitle }: SongGeneratorProps) {
 
       setTaskId(taskId);
       setProgress(20);
-    } catch (err: any) {
-      toast.error('Failed to generate music: ' + err.message);
+    } catch (err: unknown) {
+      toast.error(
+        'Failed to generate music: ' +
+          (err instanceof Error ? err.message : 'Unknown error')
+      );
       setIsGenerating(false);
       setProgress(0);
       setGenerationStartTime(null);

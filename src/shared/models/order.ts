@@ -1,12 +1,13 @@
 import { and, count, desc, eq, or } from 'drizzle-orm';
 
-import { db } from '@/core/db';
+import { db, type DatabaseSession } from '@/core/db';
 import { credit, order, subscription } from '@/config/db/schema';
 import { PaymentType } from '@/extensions/payment/types';
 
-import { NewCredit } from './credit';
+import { Credit, NewCredit } from './credit';
 import {
   NewSubscription,
+  Subscription,
   UpdateSubscription,
   updateSubscriptionBySubscriptionNo,
 } from './subscription';
@@ -224,8 +225,12 @@ export async function updateOrderInTransaction({
   }
 
   // need transaction
-  const result = await db().transaction(async (tx: any) => {
-    let result: any = {
+  const result = await db().transaction(async (tx: DatabaseSession) => {
+    const result: {
+      order: Order | null;
+      subscription: Subscription | null;
+      credit: Credit | null;
+    } = {
       order: null,
       subscription: null,
       credit: null,
@@ -233,7 +238,7 @@ export async function updateOrderInTransaction({
 
     // deal with subscription
     if (newSubscription) {
-      let existingSubscription: any = null;
+      let existingSubscription: Subscription | null = null;
       if (newSubscription.subscriptionId && newSubscription.paymentProvider) {
         // not create subscription with same subscription id and payment provider
         const [existingSubscriptionResult] = await tx
@@ -308,7 +313,7 @@ export async function updateOrderInTransaction({
       console.log(`Order ${orderNo} already paid or not in CREATED status, skipping update`);
     }
 
-    result.order = orderResult;
+    result.order = orderResult ?? null;
 
     return result;
   });
@@ -340,8 +345,12 @@ export async function updateSubscriptionInTransaction({
   }
 
   // need transaction
-  const result = await db().transaction(async (tx: any) => {
-    let result: any = {
+  const result = await db().transaction(async (tx: DatabaseSession) => {
+    const result: {
+      order: Order | null;
+      subscription: Subscription | null;
+      credit: Credit | null;
+    } = {
       order: null,
       subscription: null,
       credit: null,
@@ -349,7 +358,7 @@ export async function updateSubscriptionInTransaction({
 
     // deal with order
     if (newOrder) {
-      let existingOrder: any = null;
+      let existingOrder: Order | null = null;
       if (newOrder.transactionId && newOrder.paymentProvider) {
         // not create order with same payment transaction id and payment provider
         const [existingOrderResult] = await tx
@@ -380,7 +389,7 @@ export async function updateSubscriptionInTransaction({
 
     // deal with credit
     if (newCredit) {
-      let existingCredit: any = null;
+      let existingCredit: Credit | null = null;
       if (result.order && result.order.orderNo) {
         // not create credit with same order no
         const [existingCreditResult] = await tx
@@ -411,7 +420,7 @@ export async function updateSubscriptionInTransaction({
       .where(eq(subscription.subscriptionNo, subscriptionNo))
       .returning();
 
-    result.subscription = subscriptionResult;
+    result.subscription = subscriptionResult ?? null;
 
     return result;
   });

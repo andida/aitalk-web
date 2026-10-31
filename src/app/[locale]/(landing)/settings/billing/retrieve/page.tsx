@@ -50,23 +50,28 @@ export default async function RetrieveBillingPage({
   }
 
   let billingUrl = '';
+  let errorMessage = '';
 
   try {
     const billing = await paymentProvider.getPaymentBilling?.({
       customerId: subscription.paymentUserId,
       returnUrl: `${envConfigs.app_url}/settings/billing`,
     });
-    if (!billing?.billingUrl) {
-      return <Empty message="billing url not found" />;
+    if (billing?.billingUrl) {
+      billingUrl = billing.billingUrl;
+      await updateSubscriptionBySubscriptionNo(subscription.subscriptionNo, {
+        billingUrl: billing.billingUrl,
+      });
     }
+  } catch (error: unknown) {
+    errorMessage =
+      error instanceof Error && error.message
+        ? error.message
+        : 'get billing failed';
+  }
 
-    billingUrl = billing.billingUrl;
-
-    await updateSubscriptionBySubscriptionNo(subscription.subscriptionNo, {
-      billingUrl: billing.billingUrl,
-    });
-  } catch (error: any) {
-    return <Empty message={error.message || 'get billing failed'} />;
+  if (errorMessage) {
+    return <Empty message={errorMessage} />;
   }
 
   if (!billingUrl) {

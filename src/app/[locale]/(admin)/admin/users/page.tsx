@@ -57,7 +57,7 @@ export default async function AdminUsersPage({
     value: email,
   };
 
-  const table: Table = {
+  const table: Table<User> = {
     columns: [
       { name: 'id', title: t('fields.id'), type: 'copy' },
       { name: 'name', title: t('fields.name') },
@@ -92,7 +92,6 @@ export default async function AdminUsersPage({
         placeholder: '-',
       },
       {
-        name: 'remainingCredits',
         title: t('fields.remaining_credits'),
         callback: async (item: User) => {
           const credits = await getRemainingCredits(item.id);
@@ -105,7 +104,6 @@ export default async function AdminUsersPage({
       { name: 'locale', title: t('fields.locale') },
       { name: 'utmSource', title: t('fields.utm_source') },
       {
-        name: 'actions',
         title: t('fields.actions'),
         type: 'dropdown',
         callback: (item: User) => [

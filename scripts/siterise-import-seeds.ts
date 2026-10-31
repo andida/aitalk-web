@@ -19,7 +19,8 @@ type SeedRow = {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
-  const file = args.file || args._[0];
+  const file =
+    (typeof args.file === 'string' ? args.file : undefined) || args._[0];
 
   if (!file) {
     throw new Error(
@@ -74,7 +75,9 @@ async function main() {
 }
 
 function parseArgs(args: string[]) {
-  const parsed: Record<string, any> & { _: string[] } = { _: [] };
+  const parsed: Record<string, string | boolean | string[] | undefined> & {
+    _: string[];
+  } = { _: [] };
 
   for (let i = 0; i < args.length; i += 1) {
     const arg = args[i];

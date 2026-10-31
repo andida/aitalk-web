@@ -2,6 +2,7 @@ import { getTranslations } from 'next-intl/server';
 
 import { Empty } from '@/shared/blocks/common';
 import { FormCard } from '@/shared/blocks/form';
+import { readFormContextString, readFormString } from '@/shared/lib/form-action';
 import {
   ApikeyStatus,
   findApikeyById,
@@ -59,29 +60,38 @@ export default async function DeleteApiKeyPage({
       },
     ],
     passby: {
-      user: user,
-      apikey: apikey,
+      user: { id: user.id },
+      apikey: { id: apikey.id },
     },
-    data: apikey,
+    data: { title: apikey.title, key: apikey.key },
     submit: {
-      handler: async (data: FormData, passby: any) => {
+      handler: async (data: FormData, passby?: unknown) => {
         'use server';
 
-        const { user, apikey } = passby;
-
-        if (!apikey) {
-          throw new Error('apikey not found');
-        }
-
+        const user = await getUserInfo();
         if (!user) {
           throw new Error('no auth');
         }
+        if (readFormContextString(passby, 'user', 'id') !== user.id) {
+          throw new Error('no permission');
+        }
 
+        const apikeyId = readFormContextString(passby, 'apikey', 'id');
+        if (!apikeyId) {
+          throw new Error('apikey not found');
+        }
+        if (apikeyId !== id) {
+          throw new Error('no permission');
+        }
+        const apikey = await findApikeyById(apikeyId);
+        if (!apikey) {
+          throw new Error('apikey not found');
+        }
         if (apikey.userId !== user.id) {
           throw new Error('no permission');
         }
 
-        const title = data.get('title') as string;
+        const title = readFormString(data, 'title');
         if (!title?.trim()) {
           throw new Error('title is required');
         }

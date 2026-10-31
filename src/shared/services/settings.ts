@@ -1,11 +1,12 @@
 import { getTranslations } from 'next-intl/server';
 
 import { Tab } from '@/shared/types/blocks/common';
+import { FormField } from '@/shared/types/blocks/form';
 
 export interface Setting {
   name: string;
   title: string;
-  type: string;
+  type: NonNullable<FormField['type']>;
   placeholder?: string;
   options?: {
     title: string;
@@ -15,7 +16,7 @@ export interface Setting {
   value?: string | string[] | boolean | number;
   group?: string;
   tab?: string;
-  attributes?: Record<string, any>;
+  attributes?: FormField['attributes'];
 }
 
 export interface SettingGroup {

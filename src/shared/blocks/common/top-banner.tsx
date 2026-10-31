@@ -1,13 +1,15 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useState, type ReactNode } from 'react';
 import { X } from 'lucide-react';
 
 import { Link } from '@/core/i18n/navigation';
 import { Button } from '@/shared/components/ui/button';
-import { cacheGet, cacheSet } from '@/shared/lib/cache';
 import { getTimestamp } from '@/shared/lib/time';
 import { cn } from '@/shared/lib/utils';
+
+import { readBannerCache, useBannerBrowserSnapshot, writeBannerCache } from './banner-state';
+import { useBannerOffset } from './use-banner-offset';
 
 type TopBannerLinkTarget = '_self' | '_blank';
 
@@ -74,140 +76,25 @@ export function TopBanner({
   className,
   onAction,
 }: TopBannerProps) {
-  const dismissKey = useMemo(() => `top-banner-dismissed:${id}`, [id]);
-
-  const [showBanner, setShowBanner] = useState(false);
-  const [bannerHeight, setBannerHeight] = useState(0);
-  const bannerRef = useRef<HTMLDivElement>(null);
-  const hasCheckedRef = useRef(false);
-
-  const isDismissed = (): boolean => {
-    if (!rememberDismiss) return false;
-    return Boolean(cacheGet(dismissKey));
-  };
-
-  const setDismissed = () => {
-    if (!rememberDismiss) return;
-    const expiresAt = getTimestamp() + dismissedExpiryDays * 24 * 60 * 60;
-    cacheSet(dismissKey, 'true', expiresAt);
-  };
-
-  useEffect(() => {
-    // Only run initial check once to avoid flicker in strict mode / rerenders
-    if (hasCheckedRef.current) return;
-    hasCheckedRef.current = true;
-
-    if (!enabled) return;
-    if (isDismissed()) return;
-
-    setShowBanner(true);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enabled]);
-
-  // Adjust header and layout spacing when banner visibility changes
-  useEffect(() => {
-    if (showBanner && bannerRef.current) {
-      const bannerHeight = bannerRef.current.offsetHeight;
-      setBannerHeight(bannerHeight);
-
-      const header = document.querySelector('header');
-      if (header) {
-        header.style.top = `${bannerHeight}px`;
-      }
-
-      const sidebarContainer = document.querySelector(
-        '[data-slot="sidebar-container"]'
-      );
-      if (sidebarContainer) {
-        (sidebarContainer as HTMLElement).style.top = `${bannerHeight}px`;
-        (sidebarContainer as HTMLElement).style.height =
-          `calc(100vh - ${bannerHeight}px)`;
-      }
-
-      const sidebarWrapper = document.querySelector(
-        '[data-slot="sidebar-wrapper"]'
-      );
-      if (sidebarWrapper) {
-        (sidebarWrapper as HTMLElement).style.paddingTop = `${bannerHeight}px`;
-      }
-    } else {
-      setBannerHeight(0);
-    }
-
-    return () => {
-      const header = document.querySelector('header');
-      if (header) {
-        header.style.top = '0px';
-      }
-
-      const sidebarContainer = document.querySelector(
-        '[data-slot="sidebar-container"]'
-      );
-      if (sidebarContainer) {
-        (sidebarContainer as HTMLElement).style.top = '0px';
-        (sidebarContainer as HTMLElement).style.height = '100vh';
-      }
-
-      const sidebarWrapper = document.querySelector(
-        '[data-slot="sidebar-wrapper"]'
-      );
-      if (sidebarWrapper) {
-        (sidebarWrapper as HTMLElement).style.paddingTop = '0px';
-      }
-    };
-  }, [showBanner]);
-
-  useEffect(() => {
-    if (!showBanner || !bannerRef.current) return;
-
-    const updateHeight = () => {
-      if (bannerRef.current) {
-        setBannerHeight(bannerRef.current.offsetHeight);
-      }
-    };
-
-    updateHeight();
-
-    const resizeObserver = new ResizeObserver(updateHeight);
-    resizeObserver.observe(bannerRef.current);
-
-    window.addEventListener('resize', updateHeight);
-
-    return () => {
-      resizeObserver.disconnect();
-      window.removeEventListener('resize', updateHeight);
-    };
-  }, [showBanner]);
+  const dismissKey = `top-banner-dismissed:${id}`;
+  const readDismissal = useCallback(
+    () => rememberDismiss && readBannerCache(dismissKey) ? 'dismissed' : 'visible',
+    [dismissKey, rememberDismiss]
+  );
+  const cachedDismissal = useBannerBrowserSnapshot(readDismissal);
+  const [dismissedKeys, setDismissedKeys] = useState<ReadonlySet<string>>(() => new Set());
+  const showBanner = enabled && cachedDismissal === 'visible' && !dismissedKeys.has(dismissKey);
+  const { bannerRef, spacerRef } = useBannerOffset(showBanner);
 
   const handleDismiss = () => {
-    setDismissed();
-    setShowBanner(false);
-    setBannerHeight(0);
-
-    const header = document.querySelector('header');
-    if (header) {
-      header.style.top = '0px';
-    }
-
-    const sidebarContainer = document.querySelector(
-      '[data-slot="sidebar-container"]'
-    );
-    if (sidebarContainer) {
-      (sidebarContainer as HTMLElement).style.top = '0px';
-      (sidebarContainer as HTMLElement).style.height = '100vh';
-    }
-
-    const sidebarWrapper = document.querySelector(
-      '[data-slot="sidebar-wrapper"]'
-    );
-    if (sidebarWrapper) {
-      (sidebarWrapper as HTMLElement).style.paddingTop = '0px';
+    setDismissedKeys((previous) => new Set(previous).add(dismissKey));
+    if (rememberDismiss) {
+      const expiresAt = getTimestamp() + dismissedExpiryDays * 24 * 60 * 60;
+      writeBannerCache(dismissKey, 'true', expiresAt);
     }
   };
 
-  if (!enabled || !showBanner) {
-    return null;
-  }
+  if (!showBanner) return null;
 
   const showButton =
     Boolean(buttonText) && (Boolean(href) || Boolean(onAction));
@@ -277,6 +164,7 @@ export function TopBanner({
               {closable ? (
                 <button
                   onClick={handleDismiss}
+                  type="button"
                   className="bg-primary/10 flex-shrink-0 rounded p-1 transition-colors"
                   aria-label="Close"
                 >
@@ -290,7 +178,7 @@ export function TopBanner({
 
       <div
         aria-hidden="true"
-        style={{ height: bannerHeight }}
+        ref={spacerRef}
         className="pointer-events-none"
       />
     </>

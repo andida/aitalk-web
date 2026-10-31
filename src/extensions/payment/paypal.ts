@@ -1,3 +1,5 @@
+import { errorMessage } from '@/shared/lib/error-message';
+
 import {
   CheckoutSession,
   PaymentBilling,
@@ -15,6 +17,86 @@ import {
   type PaymentProvider,
   type PaymentSession,
 } from './types';
+
+type PayPalAmount = { value?: string; currency_code?: string };
+type PayPalName = { given_name?: string; surname?: string };
+type PayPalParty = {
+  email_address?: string;
+  name?: PayPalName;
+  payer_id?: string;
+};
+type PayPalMetadata = Record<string, unknown> & {
+  order_no?: unknown;
+  custom_id?: string;
+};
+type PayPalCapture = {
+  id?: string;
+  status?: string;
+  create_time?: string;
+  custom_id?: string;
+  amount?: PayPalAmount;
+  seller_receivable_breakdown?: { discount?: PayPalAmount };
+  supplementary_data?: { related_ids?: { order_id?: string } };
+};
+type PayPalPurchaseUnit = {
+  custom_id?: string;
+  amount?: PayPalAmount & { breakdown?: { discount?: PayPalAmount } };
+  payments?: { captures?: PayPalCapture[] };
+};
+type PayPalOrder = {
+  id?: string;
+  status?: string;
+  create_time?: string;
+  payer?: PayPalParty;
+  purchase_units?: PayPalPurchaseUnit[];
+};
+type PayPalSale = PayPalCapture;
+type PayPalSubscription = {
+  id?: string;
+  status?: string;
+  custom_id?: string;
+  plan_id?: string;
+  start_time?: string;
+  create_time?: string;
+  status_update_time?: string;
+  status_change_note?: string;
+  subscriber?: PayPalParty;
+  billing_info?: {
+    next_billing_time?: string;
+    last_payment?: { id?: string; time?: string; amount?: PayPalAmount };
+    cycle_executions?: Array<{ cycles_completed?: number }>;
+  };
+};
+type PayPalPlan = {
+  product_id?: string;
+  name?: string;
+  billing_cycles?: Array<{
+    tenure_type?: string;
+    frequency?: { interval_unit?: string; interval_count?: number };
+    pricing_scheme?: { fixed_price?: PayPalAmount };
+  }>;
+};
+
+function readPayPalMetadata(value: string | undefined): PayPalMetadata {
+  if (!value) return {};
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      return parsed as PayPalMetadata;
+    }
+  } catch {
+    return { custom_id: value };
+  }
+  return { custom_id: value };
+}
+
+function isApprovalLink(value: unknown): value is { rel: 'approve'; href: string } {
+  return (
+    typeof value === 'object' && value !== null &&
+    'rel' in value && value.rel === 'approve' &&
+    'href' in value && typeof value.href === 'string'
+  );
+}
 
 /**
  * PayPal payment provider configs
@@ -97,7 +179,7 @@ export class PayPalProvider implements PaymentProvider {
       0
     );
 
-    const payload: any = {
+    const payload: Record<string, unknown> = {
       intent: 'CAPTURE',
       purchase_units: [
         {
@@ -145,9 +227,9 @@ export class PayPalProvider implements PaymentProvider {
       payload
     );
 
-    const approvalUrl = result.links?.find(
-      (link: any) => link.rel === 'approve'
-    )?.href;
+    const approvalUrl = Array.isArray(result.links)
+      ? result.links.find(isApprovalLink)?.href
+      : undefined;
 
     return {
       provider: this.name,
@@ -186,7 +268,7 @@ export class PayPalProvider implements PaymentProvider {
     );
 
     // Create a billing plan
-    const planPayload: any = {
+    const planPayload = {
       product_id: productResponse.id,
       name: order.plan.name,
       description: order.plan.description || order.description,
@@ -242,7 +324,7 @@ export class PayPalProvider implements PaymentProvider {
     );
 
     // Create subscription
-    const subscriptionPayload: any = {
+    const subscriptionPayload: Record<string, unknown> = {
       plan_id: planResponse.id,
       custom_id: order.metadata ? JSON.stringify(order.metadata) : undefined,
       application_context: {
@@ -278,9 +360,9 @@ export class PayPalProvider implements PaymentProvider {
       subscriptionPayload
     );
 
-    const approvalUrl = subscriptionResponse.links?.find(
-      (link: any) => link.rel === 'approve'
-    )?.href;
+    const approvalUrl = Array.isArray(subscriptionResponse.links)
+      ? subscriptionResponse.links.find(isApprovalLink)?.href
+      : undefined;
 
     return {
       provider: this.name,
@@ -334,11 +416,12 @@ export class PayPalProvider implements PaymentProvider {
         }
 
         return await this.buildPaymentSessionFromOrder(orderResult);
-      } catch (orderError: any) {
+      } catch (orderError: unknown) {
         // If not found as order, try as subscription
+        const message = errorMessage(orderError, '');
         if (
-          orderError.message?.includes('RESOURCE_NOT_FOUND') ||
-          orderError.message?.includes('INVALID_RESOURCE_ID')
+          message.includes('RESOURCE_NOT_FOUND') ||
+          message.includes('INVALID_RESOURCE_ID')
         ) {
           let subscriptionResult = await this.makeRequest(
             `/v1/billing/subscriptions/${sessionId}`,
@@ -578,7 +661,7 @@ export class PayPalProvider implements PaymentProvider {
             : undefined,
           currency: capture.amount?.currency_code,
         };
-      } catch (captureError: any) {
+      } catch (captureError) {
         // If not a capture (subscription sale), just return the activity URL
         return {
           invoiceId: invoiceId,
@@ -703,7 +786,7 @@ export class PayPalProvider implements PaymentProvider {
     this.tokenExpiry = Date.now() + data.expires_in * 1000;
   }
 
-  private async makeRequest(endpoint: string, method: string, data?: any) {
+  private async makeRequest(endpoint: string, method: string, data?: unknown) {
     const url = `${this.baseUrl}${endpoint}`;
     const headers: Record<string, string> = {
       Authorization: `Bearer ${this.accessToken}`,
@@ -727,11 +810,16 @@ export class PayPalProvider implements PaymentProvider {
     }
 
     if (!response.ok) {
-      const result = await response.json();
+      const result = (await response.json()) as {
+        name?: string;
+        error?: string;
+        message?: string;
+        details?: Array<{ issue?: string; description?: string }>;
+      };
       let errorMessage = result.name || result.error || 'Unknown error';
       if (result.details) {
         errorMessage += `: ${result.details
-          .map((detail: any) => detail.issue || detail.description)
+          .map((detail) => detail.issue || detail.description)
           .join(', ')}`;
       }
       if (result.message) {
@@ -750,7 +838,7 @@ export class PayPalProvider implements PaymentProvider {
       case 'CHECKOUT.ORDER.COMPLETED':
         return PaymentEventType.CHECKOUT_SUCCESS;
 
-      // Payment capture events
+      // One-time captures and subscription sale payments share this event result.
       case 'PAYMENT.CAPTURE.COMPLETED':
       case 'PAYMENT.SALE.COMPLETED':
         return PaymentEventType.PAYMENT_SUCCESS;
@@ -774,10 +862,6 @@ export class PayPalProvider implements PaymentProvider {
       case 'BILLING.SUBSCRIPTION.SUSPENDED':
       case 'BILLING.SUBSCRIPTION.EXPIRED':
         return PaymentEventType.SUBSCRIBE_CANCELED;
-
-      // Subscription payment events
-      case 'PAYMENT.SALE.COMPLETED':
-        return PaymentEventType.PAYMENT_SUCCESS;
 
       default:
         throw new Error(`Unknown PayPal event type: ${eventType}`);
@@ -865,7 +949,7 @@ export class PayPalProvider implements PaymentProvider {
 
   // Build payment session from order
   private async buildPaymentSessionFromOrder(
-    order: any
+    order: PayPalOrder
   ): Promise<PaymentSession> {
     const purchaseUnit = order.purchase_units?.[0];
     const payer = order.payer;
@@ -873,14 +957,7 @@ export class PayPalProvider implements PaymentProvider {
     const breakdown = purchaseUnit?.amount?.breakdown;
 
     // Parse metadata from custom_id
-    let metadata: any = {};
-    if (purchaseUnit?.custom_id) {
-      try {
-        metadata = JSON.parse(purchaseUnit.custom_id);
-      } catch {
-        metadata = { custom_id: purchaseUnit.custom_id };
-      }
-    }
+    const metadata = readPayPalMetadata(purchaseUnit?.custom_id);
 
     // Get discount info from breakdown
     const discountValue = breakdown?.discount?.value
@@ -909,7 +986,7 @@ export class PayPalProvider implements PaymentProvider {
 
     const result: PaymentSession = {
       provider: this.name,
-      paymentStatus: this.mapPayPalStatus(order.status),
+      paymentStatus: this.mapPayPalStatus(order.status || ''),
       paymentInfo: {
         transactionId: order.id,
         discountCode: '', // PayPal doesn't have promotion codes like Stripe
@@ -938,7 +1015,7 @@ export class PayPalProvider implements PaymentProvider {
 
   // Build payment session from capture event
   private async buildPaymentSessionFromCapture(
-    capture: any
+    capture: PayPalCapture
   ): Promise<PaymentSession> {
     // Get breakdown info from seller_receivable_breakdown
     const breakdown = capture.seller_receivable_breakdown;
@@ -957,14 +1034,7 @@ export class PayPalProvider implements PaymentProvider {
     const paymentCurrency = capture.amount?.currency_code || '';
 
     // Parse metadata from custom_id (set during order creation)
-    let metadata: any = {};
-    if (capture.custom_id) {
-      try {
-        metadata = JSON.parse(capture.custom_id);
-      } catch {
-        metadata = { custom_id: capture.custom_id };
-      }
-    }
+    let metadata = readPayPalMetadata(capture.custom_id);
 
     // Try to get order_id from supplementary_data for fetching full order info
     const orderId = capture.supplementary_data?.related_ids?.order_id;
@@ -976,11 +1046,7 @@ export class PayPalProvider implements PaymentProvider {
         );
         const purchaseUnit = order.purchase_units?.[0];
         if (purchaseUnit?.custom_id) {
-          try {
-            metadata = JSON.parse(purchaseUnit.custom_id);
-          } catch {
-            metadata = { custom_id: purchaseUnit.custom_id };
-          }
+          metadata = readPayPalMetadata(purchaseUnit.custom_id);
         }
       } catch (e) {
         console.log('Failed to fetch order for metadata:', e);
@@ -989,7 +1055,7 @@ export class PayPalProvider implements PaymentProvider {
 
     const result: PaymentSession = {
       provider: this.name,
-      paymentStatus: this.mapPayPalStatus(capture.status),
+      paymentStatus: this.mapPayPalStatus(capture.status || ''),
       paymentInfo: {
         transactionId: capture.id,
         discountCode: '',
@@ -1009,18 +1075,10 @@ export class PayPalProvider implements PaymentProvider {
 
   // Build payment session from subscription
   private async buildPaymentSessionFromSubscription(
-    subscription: any,
-    saleEvent?: any
+    subscription: PayPalSubscription,
+    saleEvent?: PayPalSale
   ): Promise<PaymentSession> {
-    // Parse metadata from custom_id
-    let metadata: any = {};
-    if (subscription.custom_id) {
-      try {
-        metadata = JSON.parse(subscription.custom_id);
-      } catch {
-        metadata = { custom_id: subscription.custom_id };
-      }
-    }
+    const metadata = readPayPalMetadata(subscription.custom_id);
 
     // Get billing info from subscription
     const billingInfo = subscription.billing_info;
@@ -1068,7 +1126,7 @@ export class PayPalProvider implements PaymentProvider {
     const subscriptionPaymentStatus =
       subscription.status === 'APPROVED' || subscription.status === 'ACTIVE'
         ? PaymentStatus.SUCCESS
-        : this.mapPayPalStatus(subscription.status);
+        : this.mapPayPalStatus(subscription.status || '');
 
     const result: PaymentSession = {
       provider: this.name,
@@ -1094,7 +1152,7 @@ export class PayPalProvider implements PaymentProvider {
           : undefined,
       },
       paymentResult: saleEvent || subscription,
-      subscriptionId: subscription.id,
+      subscriptionId: subscription.id || '',
       subscriptionInfo: await this.buildSubscriptionInfo(subscription),
       subscriptionResult: subscription,
       metadata: metadata,
@@ -1105,12 +1163,12 @@ export class PayPalProvider implements PaymentProvider {
 
   // Build subscription info from subscription
   private async buildSubscriptionInfo(
-    subscription: any
+    subscription: PayPalSubscription
   ): Promise<SubscriptionInfo> {
     const billingInfo = subscription.billing_info;
 
     // Get plan details if available
-    let planDetails: any = null;
+    let planDetails: PayPalPlan | null = null;
     if (subscription.plan_id) {
       try {
         planDetails = await this.makeRequest(
@@ -1123,7 +1181,7 @@ export class PayPalProvider implements PaymentProvider {
     }
 
     const billingCycle = planDetails?.billing_cycles?.find(
-      (cycle: any) => cycle.tenure_type === 'REGULAR'
+      (cycle) => cycle.tenure_type === 'REGULAR'
     );
 
     // Determine interval for period calculation
@@ -1135,7 +1193,9 @@ export class PayPalProvider implements PaymentProvider {
     // Calculate currentPeriodStart
     const currentPeriodStart = billingInfo?.last_payment?.time
       ? new Date(billingInfo.last_payment.time)
-      : new Date(subscription.start_time || subscription.create_time);
+      : new Date(
+          subscription.start_time || subscription.create_time || Date.now()
+        );
 
     // Calculate currentPeriodEnd
     // Prefer PayPal's next_billing_time, fallback to calculated value based on interval
@@ -1170,7 +1230,7 @@ export class PayPalProvider implements PaymentProvider {
     }
 
     const subscriptionInfo: SubscriptionInfo = {
-      subscriptionId: subscription.id,
+      subscriptionId: subscription.id || '',
       productId: planDetails?.product_id,
       planId: subscription.plan_id,
       description: planDetails?.name || subscription.plan_id,
@@ -1187,16 +1247,8 @@ export class PayPalProvider implements PaymentProvider {
       intervalCount: intervalCount,
       currentPeriodStart: currentPeriodStart,
       currentPeriodEnd: currentPeriodEnd,
-      metadata: subscription.custom_id
-        ? (() => {
-            try {
-              return JSON.parse(subscription.custom_id);
-            } catch {
-              return { custom_id: subscription.custom_id };
-            }
-          })()
-        : {},
-      status: this.mapPayPalSubscriptionStatus(subscription.status),
+      metadata: readPayPalMetadata(subscription.custom_id),
+      status: this.mapPayPalSubscriptionStatus(subscription.status || ''),
     };
 
     // Handle cancellation info

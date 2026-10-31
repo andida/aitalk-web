@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import { Fragment } from 'react/jsx-runtime';
 import { Coins, LayoutDashboard, Loader2, LogOut, User } from 'lucide-react';
 import { useTranslations } from 'next-intl';
@@ -21,6 +21,7 @@ import {
   DropdownMenuTrigger,
 } from '@/shared/components/ui/dropdown-menu';
 import { useAppContext } from '@/shared/contexts/app';
+import { useHydrated } from '@/shared/hooks/use-hydrated';
 import { cn } from '@/shared/lib/utils';
 import { User as UserType } from '@/shared/models/user';
 import { NavItem, UserNav } from '@/shared/types/blocks/common';
@@ -28,8 +29,15 @@ import { NavItem, UserNav } from '@/shared/types/blocks/common';
 import { SmartIcon } from '../common/smart-icon';
 import { SignModal } from './sign-modal';
 
-function extractSessionUser(data: any): UserType | null {
-  const u = data?.user ?? data?.data?.user ?? null;
+function extractSessionUser(data: unknown): UserType | null {
+  const outer = data && typeof data === 'object' ? data : {};
+  const direct = 'user' in outer ? outer.user : undefined;
+  const nested = 'data' in outer ? outer.data : undefined;
+  const u =
+    direct ??
+    (nested && typeof nested === 'object' && 'user' in nested
+      ? nested.user
+      : null);
   return u && typeof u === 'object' ? (u as UserType) : null;
 }
 
@@ -45,10 +53,7 @@ export function SignUser({
   const t = useTranslations('common.sign');
   const router = useRouter();
 
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => {
-    setMounted(true);
-  }, []);
+  const mounted = useHydrated();
 
   // get app context values
   const {
@@ -101,7 +106,7 @@ export function SignUser({
   // set user
   useEffect(() => {
     const currentUserId = user?.id;
-    const sessionUserId = (sessionUser as any)?.id;
+    const sessionUserId = sessionUser?.id;
 
     if (sessionUser && sessionUserId !== currentUserId) {
       setUser(sessionUser as UserType);
@@ -113,7 +118,7 @@ export function SignUser({
       setUser(null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionUser?.id, (sessionUser as any)?.email, user?.id, isPending]);
+  }, [sessionUser?.id, sessionUser?.email, user?.id, isPending]);
 
   // Fallback: if the session cookie is present but useSession lags, do a single refresh.
   useEffect(() => {
@@ -126,7 +131,7 @@ export function SignUser({
     didFallbackSyncRef.current = true;
     void (async () => {
       try {
-        const res: any = await authClient.getSession();
+        const res = await authClient.getSession();
         const fresh = extractSessionUser(res?.data ?? res);
         if (fresh?.id) {
           setUser(fresh);

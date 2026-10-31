@@ -3,10 +3,12 @@ import { getTranslations } from 'next-intl/server';
 import { AITaskStatus } from '@/extensions/ai';
 import { AudioPlayer, Empty, LazyImage } from '@/shared/blocks/common';
 import { TableCard } from '@/shared/blocks/table';
+import { parseAITaskDisplay } from '@/shared/lib/ai-task-display';
+import { narrowAITaskTableDisplay } from '@/shared/lib/ai-task-table-display';
 import { AITask, getAITasks, getAITasksCount } from '@/shared/models/ai_task';
 import { getUserInfo } from '@/shared/models/user';
-import { Button, Tab } from '@/shared/types/blocks/common';
-import { type Table } from '@/shared/types/blocks/table';
+import { Tab } from '@/shared/types/blocks/common';
+import { type Table, type TableAction } from '@/shared/types/blocks/table';
 
 export default async function AiTasksPage({
   searchParams,
@@ -36,7 +38,7 @@ export default async function AiTasksPage({
     mediaType: type,
   });
 
-  const table: Table = {
+  const table: Table<AITask> = {
     title: t('list.title'),
     columns: [
       { name: 'prompt', title: t('fields.prompt'), type: 'copy' },
@@ -47,27 +49,28 @@ export default async function AiTasksPage({
       { name: 'status', title: t('fields.status'), type: 'label' },
       { name: 'costCredits', title: t('fields.cost_credits'), type: 'label' },
       {
-        name: 'result',
         title: t('fields.result'),
         callback: (item: AITask) => {
           if (item.taskInfo) {
-            const taskInfo = JSON.parse(item.taskInfo);
-            if (taskInfo.errorMessage) {
+            let parsed: unknown;
+            try {
+              parsed = parseAITaskDisplay(item.taskInfo);
+            } catch {
+              return '-';
+            }
+            const taskInfo = narrowAITaskTableDisplay(parsed);
+            if (taskInfo.kind === 'error') {
               return (
-                <div className="text-red-500">
-                  Failed: {taskInfo.errorMessage}
-                </div>
+                <div className="text-red-500">Failed: {taskInfo.message}</div>
               );
-            } else if (taskInfo.songs && taskInfo.songs.length > 0) {
-              const songs: any[] = taskInfo.songs.filter(
-                (song: any) => song.audioUrl
-              );
+            } else if (taskInfo.kind === 'songs') {
+              const songs = taskInfo.items;
               if (songs.length > 0) {
                 return (
                   <div className="flex flex-col gap-2">
-                    {songs.map((song: any) => (
+                    {songs.map((song, index) => (
                       <AudioPlayer
-                        key={song.id}
+                        key={song.id || index}
                         src={song.audioUrl}
                         title={song.title}
                         className="w-80"
@@ -76,10 +79,13 @@ export default async function AiTasksPage({
                   </div>
                 );
               }
-            } else if (taskInfo.images && taskInfo.images.length > 0) {
+            } else if (
+              taskInfo.kind === 'images' &&
+              taskInfo.items.length > 0
+            ) {
               return (
                 <div className="flex flex-col gap-2">
-                  {taskInfo.images.map((image: any, index: number) => (
+                  {taskInfo.items.map((image, index) => (
                     <LazyImage
                       key={index}
                       src={image.imageUrl}
@@ -89,8 +95,6 @@ export default async function AiTasksPage({
                   ))}
                 </div>
               );
-            } else {
-              return '-';
             }
           }
 
@@ -99,11 +103,10 @@ export default async function AiTasksPage({
       },
       { name: 'createdAt', title: t('fields.created_at'), type: 'time' },
       {
-        name: 'action',
         title: t('fields.action'),
         type: 'dropdown',
         callback: (item: AITask) => {
-          const items: Button[] = [];
+          const items: TableAction[] = [];
 
           if (
             item.status === AITaskStatus.PENDING ||

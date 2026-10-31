@@ -24,12 +24,14 @@ function run(command, commandArgs, options = {}) {
 
 const readinessArgs = ['scripts/check-cloudflare-readiness.mjs'];
 if (remoteReady) {
-  readinessArgs.push('--remote-secrets-confirmed', '--cloudflare-auth-confirmed');
+  readinessArgs.push(
+    '--remote-secrets-confirmed',
+    '--cloudflare-auth-confirmed'
+  );
 }
 
 run('node', readinessArgs);
 run('npm', ['run', 'build']);
-run('pnpm', ['exec', 'opennextjs-cloudflare', 'build']);
 
 if (mode === 'preview') {
   run('pnpm', ['exec', 'opennextjs-cloudflare', 'preview']);

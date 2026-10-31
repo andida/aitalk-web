@@ -8,6 +8,7 @@ import {
   CreditTransactionType,
   getCredits,
   getCreditsCount,
+  type Credit,
 } from '@/shared/models/credit';
 import { Crumb, Tab } from '@/shared/types/blocks/common';
 import { type Table } from '@/shared/types/blocks/table';
@@ -74,7 +75,7 @@ export default async function CreditsPage({
     limit,
   });
 
-  const table: Table = {
+  const table: Table<Credit> = {
     columns: [
       {
         name: 'transactionNo',

@@ -6,8 +6,8 @@ export async function POST(req: Request) {
     const configs = await getPublicConfigs();
 
     return respData(configs);
-  } catch (e: any) {
+  } catch (e: unknown) {
     console.log('get configs failed', e);
-    return respErr(e.message);
+    return respErr(e instanceof Error ? e.message : 'get configs failed');
   }
 }

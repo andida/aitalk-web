@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 
 import { Button } from '@/shared/components/ui/button';
 import { ScrollAnimation } from '@/shared/components/ui/scroll-animation';
+import { errorMessage } from '@/shared/lib/error-message';
 import { cn } from '@/shared/lib/utils';
 import type { Section } from '@/shared/types/blocks/landing';
 
@@ -49,9 +50,9 @@ export function Subscribe({
       if (message) {
         toast.success(message);
       }
-    } catch (e: any) {
+    } catch (e: unknown) {
       setLoading(false);
-      toast.error(e.message || 'subscribe failed');
+      toast.error(errorMessage(e, 'subscribe failed'));
     }
   };
 

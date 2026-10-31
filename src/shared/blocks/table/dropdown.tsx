@@ -11,20 +11,20 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/shared/components/ui/dropdown-menu';
-import { NavItem } from '@/shared/types/blocks/common';
+import type { TableAction } from '@/shared/types/blocks/table';
+
+import { actionValues } from './value';
 
 export function Dropdown({
-  value,
-  placeholder,
-  metadata,
-  className,
+  value: suppliedValue,
 }: {
-  value: NavItem[];
+  value: readonly TableAction[] | null | undefined;
   placeholder?: string;
-  metadata: Record<string, any>;
+  metadata?: never;
   className?: string;
 }) {
-  if (!value || value.length === 0) {
+  const value = actionValues(suppliedValue);
+  if (value.length === 0) {
     return null;
   }
 
@@ -46,10 +46,13 @@ export function Dropdown({
               <Link
                 href={item.url || ''}
                 target={item.target || '_self'}
+                rel={
+                  item.target === '_blank' ? 'noopener noreferrer' : undefined
+                }
                 className="flex w-full items-center gap-2"
               >
                 {item.icon && (
-                  <SmartIcon name={item.icon as string} className="h-4 w-4" />
+                  <SmartIcon name={item.icon} className="h-4 w-4" />
                 )}
                 {item.title}
               </Link>

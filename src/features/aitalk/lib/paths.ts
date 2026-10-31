@@ -13,7 +13,7 @@ export function stripLocale(pathname: string) {
   const [path, suffix] = splitPathAndSuffix(pathname);
   const parts = path.split('/');
   const maybeLocale = parts[1];
-  if (routing.locales.includes(maybeLocale as any)) {
+  if (routing.locales.some((locale) => locale === maybeLocale)) {
     const stripped = `/${parts.slice(2).join('/')}`;
     const normalized =
       stripped === '/' ? '/' : stripped.replace(/\/$/, '') || '/';
@@ -25,7 +25,7 @@ export function stripLocale(pathname: string) {
 
 export function getLocaleFromPath(pathname: string) {
   const locale = pathname.split('/')[1];
-  return routing.locales.includes(locale as any)
+  return routing.locales.some((supportedLocale) => supportedLocale === locale)
     ? locale
     : routing.defaultLocale;
 }

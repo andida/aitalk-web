@@ -7,6 +7,7 @@ import { logsSource, pagesSource, postsSource } from '@/core/docs/source';
 import { generateTOC } from '@/core/docs/toc';
 import { post } from '@/config/db/schema';
 import { MarkdownContent } from '@/shared/blocks/common/markdown-content';
+import { readPostFrontmatter } from '@/shared/lib/post-frontmatter';
 import {
   Category as BlogCategoryType,
   Post as BlogPostType,
@@ -220,7 +221,7 @@ export async function getLocalPost({
     />
   );
 
-  const frontmatter = localPost.data as any;
+  const frontmatter = readPostFrontmatter(localPost.data);
 
   const post: BlogPostType = {
     id: localPost.path,
@@ -268,7 +269,7 @@ export async function getLocalPage({
     />
   );
 
-  const frontmatter = localPage.data as any;
+  const frontmatter = readPostFrontmatter(localPage.data);
 
   const post: BlogPostType = {
     id: localPage.path,
@@ -308,7 +309,7 @@ export async function getPostsAndCategories({
   categoryPrefix?: string;
 }) {
   let posts: BlogPostType[] = [];
-  let categories: BlogCategoryType[] = [];
+  const categories: BlogCategoryType[] = [];
 
   // merge posts from both locale and remote, remove duplicates by slug
   // remote posts have higher priority
@@ -481,7 +482,7 @@ export async function getLocalPostsAndCategories({
   // Build posts data from local content
   localPostsList.push(
     ...localPosts.map((post) => {
-      const frontmatter = post.data as any;
+      const frontmatter = readPostFrontmatter(post.data);
       const slug = getPostSlug({
         url: post.url,
         locale,

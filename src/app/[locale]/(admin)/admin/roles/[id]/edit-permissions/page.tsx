@@ -5,6 +5,11 @@ import { Empty } from '@/shared/blocks/common';
 import { Header, Main, MainHeader } from '@/shared/blocks/dashboard';
 import { FormCard } from '@/shared/blocks/form';
 import {
+  readFormContextString,
+  readFormStringArray,
+} from '@/shared/lib/form-action';
+import { getUserInfo } from '@/shared/models/user';
+import {
   assignPermissionsToRole,
   getPermissions,
   getRoleById,
@@ -48,7 +53,7 @@ export default async function RoleEditPermissionsPage({
     value: permission.id,
   }));
 
-  const rolePermissions = await getRolePermissions(role.id as string);
+  const rolePermissions = await getRolePermissions(id);
   const rolePermissionIds = rolePermissions.map((permission) => permission.id);
 
   const form: Form = {
@@ -76,10 +81,11 @@ export default async function RoleEditPermissionsPage({
       },
     ],
     passby: {
-      role: role,
+      role: { id },
     },
     data: {
-      ...role,
+      name: role.name,
+      title: role.title,
       permissions: rolePermissionIds,
     },
     submit: {
@@ -89,22 +95,39 @@ export default async function RoleEditPermissionsPage({
       handler: async (data, passby) => {
         'use server';
 
-        const { role } = passby;
-
-        if (!role) {
+        const operator = await getUserInfo();
+        if (!operator) {
           throw new Error('no auth');
         }
+        await requirePermission({
+          code: PERMISSIONS.ROLES_WRITE,
+          redirectUrl: '/admin/no-permission',
+          locale,
+        });
 
-        let permissions = data.get('permissions') as unknown as string[];
-        if (typeof permissions === 'string') {
-          try {
-            permissions = JSON.parse(permissions);
-          } catch (error) {
-            throw new Error('invalid permissions');
-          }
+        if (readFormContextString(passby, 'role', 'id') !== id) {
+          throw new Error('invalid role context');
+        }
+        const role = await getRoleById(id);
+        if (!role || role.id !== id) {
+          throw new Error('Role not found');
         }
 
-        await assignPermissionsToRole(role.id as string, permissions);
+        const permissions = readFormStringArray(data, 'permissions');
+        const [availablePermissions, assignedPermissions] = await Promise.all([
+          getPermissions(),
+          getRolePermissions(role.id),
+        ]);
+        // Keep current historical assignments even when absent from the picker.
+        const knownIds = new Set([
+          ...availablePermissions.map((permission) => permission.id),
+          ...assignedPermissions.map((permission) => permission.id),
+        ]);
+        if (permissions.some((permissionId) => !knownIds.has(permissionId))) {
+          throw new Error('invalid permissions');
+        }
+
+        await assignPermissionsToRole(role.id, permissions);
 
         return {
           status: 'success',

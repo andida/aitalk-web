@@ -4,7 +4,13 @@ import { PERMISSIONS, requirePermission } from '@/core/rbac';
 import { Empty } from '@/shared/blocks/common';
 import { Header, Main, MainHeader } from '@/shared/blocks/dashboard';
 import { FormCard } from '@/shared/blocks/form';
-import { findUserById, updateUser, UpdateUser } from '@/shared/models/user';
+import { readFormContextString, readFormString } from '@/shared/lib/form-action';
+import {
+  findUserById,
+  getUserInfo,
+  updateUser,
+  UpdateUser,
+} from '@/shared/models/user';
 import { Crumb } from '@/shared/types/blocks/common';
 import { Form } from '@/shared/types/blocks/form';
 
@@ -58,9 +64,9 @@ export default async function UserEditPage({
       },
     ],
     passby: {
-      user: user,
+      user: { id: user.id },
     },
-    data: user,
+    data: { email: user.email, name: user.name, image: user.image },
     submit: {
       button: {
         title: t('edit.buttons.submit'),
@@ -68,21 +74,35 @@ export default async function UserEditPage({
       handler: async (data, passby) => {
         'use server';
 
-        const { user } = passby;
-
-        if (!user) {
+        const actor = await getUserInfo();
+        if (!actor) {
           throw new Error('no auth');
         }
+        await requirePermission({
+          code: PERMISSIONS.USERS_WRITE,
+          redirectUrl: '/admin/no-permission',
+          locale,
+        });
+        if (readFormContextString(passby, 'user', 'id') !== id) {
+          throw new Error('invalid user context');
+        }
+        const user = await findUserById(id);
+        if (!user || user.id !== id) {
+          throw new Error('User not found');
+        }
 
-        const name = data.get('name') as string;
-        const image = data.get('image') as string;
+        const name = readFormString(data, 'name');
+        const image = readFormString(data, 'image');
+        if (name === null) {
+          throw new Error('name must be a string');
+        }
 
         const newUser: UpdateUser = {
           name: name.trim(),
-          image: image as string,
+          image,
         };
 
-        const result = await updateUser(user.id as string, newUser);
+        const result = await updateUser(user.id, newUser);
 
         if (!result) {
           throw new Error('update user failed');

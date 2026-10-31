@@ -4,7 +4,6 @@ import { getTranslations } from 'next-intl/server';
 import { Empty } from '@/shared/blocks/common';
 import { PanelCard } from '@/shared/blocks/panel';
 import { TableCard } from '@/shared/blocks/table';
-import { Button } from '@/shared/components/ui/button';
 import {
   getCurrentSubscription,
   getSubscriptions,
@@ -46,7 +45,7 @@ export default async function BillingPage({
     limit,
   });
 
-  const table: Table = {
+  const table: Table<Subscription> = {
     title: t('list.title'),
     columns: [
       {
@@ -87,7 +86,7 @@ export default async function BillingPage({
           }
 
           return (
-            <div className="text-primary">{`${prefix}${item.amount / 100}`}</div>
+            <div className="text-primary">{`${prefix}${(item.amount === null ? 0 : item.amount) / 100}`}</div>
           );
         },
       },
@@ -99,7 +98,7 @@ export default async function BillingPage({
       {
         title: t('fields.current_period'),
         callback: function (item) {
-          let period = (
+          const period = (
             <div>
               {`${moment(item.currentPeriodStart).format('YYYY-MM-DD')}`} ~
               <br />
@@ -246,7 +245,7 @@ export default async function BillingPage({
               <div className="text-muted-foreground mt-4 text-sm font-normal">
                 {t('view.tip', {
                   date: moment(currentSubscription?.currentPeriodEnd).format(
-                    'YYYY-MM-DD'
+                    'YYYY-MM-DD',
                   ),
                 })}
               </div>
@@ -254,7 +253,7 @@ export default async function BillingPage({
               <div className="text-destructive mt-4 text-sm font-normal">
                 {t('view.end_tip', {
                   date: moment(currentSubscription?.canceledEndAt).format(
-                    'YYYY-MM-DD'
+                    'YYYY-MM-DD',
                   ),
                 })}
               </div>

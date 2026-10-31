@@ -49,12 +49,6 @@ function escapeRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-function hasConfigKey(key) {
-  return new RegExp(
-    `(?:"${escapeRegExp(key)}"|${escapeRegExp(key)})\\s*[:=]`
-  ).test(wranglerText);
-}
-
 function hasConfigValue(key, value) {
   return new RegExp(
     `(?:"${escapeRegExp(key)}"|${escapeRegExp(key)})\\s*[:=]\\s*"${escapeRegExp(value)}"`
@@ -97,8 +91,8 @@ addCheck(
 
 addCheck(
   'Wrangler config has worker name',
-  hasConfigValue('name', 'aitalk-web'),
-  'expected name = "aitalk-web"'
+  hasConfigValue('name', 'aitalk-web-lp'),
+  'expected production worker name = "aitalk-web-lp"'
 );
 
 addCheck(
@@ -119,18 +113,14 @@ addCheck(
 addCheck(
   'Wrangler config has WORKER_SELF_REFERENCE service binding',
   hasConfigValue('binding', 'WORKER_SELF_REFERENCE') &&
-    hasConfigValue('service', 'aitalk-web'),
-  'required by OpenNext Cloudflare worker self-fetches'
+    hasConfigValue('service', 'aitalk-web-lp'),
+  'expected the production worker to refer to itself'
 );
 
 addCheck(
-  'NEXT_PUBLIC_APP_URL is not the placeholder',
-  wranglerExists &&
-    !wranglerText.includes('YOUR_WORKERS_SUBDOMAIN') &&
-    hasConfigKey('NEXT_PUBLIC_APP_URL'),
-  wranglerText.includes('YOUR_WORKERS_SUBDOMAIN')
-    ? 'replace YOUR_WORKERS_SUBDOMAIN before deploy'
-    : 'configured'
+  'NEXT_PUBLIC_APP_URL matches the public production domain',
+  hasConfigValue('NEXT_PUBLIC_APP_URL', 'https://aitalk.im'),
+  'AITalk login callbacks use the browser origin; canonical URL is https://aitalk.im'
 );
 
 addCheck(
@@ -177,6 +167,16 @@ addCheck(
     : remoteSecretsConfirmed
       ? 'confirmed as Cloudflare secret'
       : 'set via wrangler secret put SEMRUSH_API_KEY'
+);
+
+addCheck(
+  'SUPABASE_SERVICE_ROLE_KEY available or confirmed',
+  Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY || remoteSecretsConfirmed),
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+    ? 'set in shell'
+    : remoteSecretsConfirmed
+      ? 'operator confirmed as Cloudflare secret; runtime still requires testing'
+      : 'confirm the server-only secret on the target Worker before deploy'
 );
 
 addCheck(

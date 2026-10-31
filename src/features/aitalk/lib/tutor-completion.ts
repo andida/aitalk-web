@@ -1,14 +1,67 @@
-import type {
-  ConversationMode,
-  TutorPracticeReport,
-  UserLessonProgress,
-} from '../types';
+import type { ConversationMode, TutorPracticeReport } from '../types';
 import {
   buildPracticeReport,
   isTutorCompletion,
   readCriteriaStatusFromTutor,
   readTutorNumber,
 } from './tutor-report';
+
+function isStringArray(value: unknown): value is string[] {
+  return (
+    Array.isArray(value) && value.every((item) => typeof item === 'string')
+  );
+}
+
+export function isTutorPracticeReport(
+  value: unknown
+): value is TutorPracticeReport {
+  if (!value || typeof value !== 'object') return false;
+  const report = value as Record<string, unknown>;
+  const criteria = report.criteria_status;
+  const improvedSentence = report.improved_sentence;
+
+  return (
+    Number.isInteger(report.score) &&
+    Number(report.score) >= 0 &&
+    Number(report.score) <= 100 &&
+    Array.isArray(criteria) &&
+    criteria.every((item) => {
+      if (!item || typeof item !== 'object') return false;
+      const criterion = item as Record<string, unknown>;
+      return (
+        typeof criterion.label === 'string' &&
+        criterion.label.trim().length > 0 &&
+        (criterion.status === 'pending' ||
+          criterion.status === 'met' ||
+          criterion.status === 'missed') &&
+        (criterion.evidence == null || typeof criterion.evidence === 'string')
+      );
+    }) &&
+    isStringArray(report.target_chunks_used) &&
+    typeof report.feedback_summary === 'string' &&
+    isStringArray(report.weak_points) &&
+    isStringArray(report.review_items) &&
+    (improvedSentence == null ||
+      (typeof improvedSentence === 'object' &&
+        typeof (improvedSentence as Record<string, unknown>).improved ===
+          'string' &&
+        String((improvedSentence as Record<string, unknown>).improved).trim()
+          .length > 0 &&
+        ((improvedSentence as Record<string, unknown>).original == null ||
+          typeof (improvedSentence as Record<string, unknown>).original ===
+            'string') &&
+        ((improvedSentence as Record<string, unknown>).reason == null ||
+          typeof (improvedSentence as Record<string, unknown>).reason ===
+            'string')))
+  );
+}
+
+export function readTutorCompletionScore(raw: unknown) {
+  const score = readTutorNumber(raw, ['score']);
+  return score !== null && Number.isInteger(score) && score >= 0 && score <= 100
+    ? score
+    : null;
+}
 
 export function resolveTutorMode(
   requested: unknown,
@@ -31,9 +84,7 @@ export async function saveTutorCompletion(
     criteria: string[];
   },
   source: {
-    getProgress(): Promise<UserLessonProgress | null>;
-    saveReport(report: TutorPracticeReport): Promise<void>;
-    complete(report: TutorPracticeReport): Promise<void>;
+    commit(report: TutorPracticeReport): Promise<TutorPracticeReport | null>;
   }
 ): Promise<TutorPracticeReport | null> {
   if (
@@ -42,16 +93,13 @@ export async function saveTutorCompletion(
     !isTutorCompletion(input.raw)
   )
     return null;
-  if (readTutorNumber(input.raw, ['score']) === null) return null;
-  // This fresh read prevents sequential duplicate completions, not concurrent ones.
-  const progress = await source.getProgress();
-  if (progress?.status === 'completed') return null;
+  if (readTutorCompletionScore(input.raw) === null) return null;
   const report = buildPracticeReport(
     input.raw,
     readCriteriaStatusFromTutor(input.raw, input.criteria, true),
     true
   );
-  await source.saveReport(report);
-  await source.complete(report);
-  return report;
+  if (!isTutorPracticeReport(report)) return null;
+  // The database commits report, progress and plan advancement together.
+  return source.commit(report);
 }

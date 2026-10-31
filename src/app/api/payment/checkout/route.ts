@@ -7,6 +7,7 @@ import {
   PaymentType,
 } from '@/extensions/payment/types';
 import { getSnowId, getUuid } from '@/shared/lib/hash';
+import { errorMessage } from '@/shared/lib/error-message';
 import { respData, respErr } from '@/shared/lib/resp';
 import { getAllConfigs } from '@/shared/models/config';
 import {
@@ -17,7 +18,7 @@ import {
 } from '@/shared/models/order';
 import { getUserInfo } from '@/shared/models/user';
 import { getPaymentService } from '@/shared/services/payment';
-import { PricingCurrency } from '@/shared/types/blocks/pricing';
+import { PricingCurrency, PricingItem } from '@/shared/types/blocks/pricing';
 
 export async function POST(req: Request) {
   try {
@@ -31,10 +32,12 @@ export async function POST(req: Request) {
       locale: locale || 'en',
       namespace: 'pages.pricing',
     });
-    const pricing = t.raw('page.sections.pricing');
+    const pricing = t.raw('page.sections.pricing') as {
+      items?: PricingItem[];
+    };
 
-    const pricingItem = pricing.items.find(
-      (item: any) => item.product_id === product_id
+    const pricingItem = pricing.items?.find(
+      (item) => item.product_id === product_id
     );
 
     if (!pricingItem) {
@@ -130,8 +133,8 @@ export async function POST(req: Request) {
     }
 
     // get payment interval
-    const paymentInterval: PaymentInterval =
-      pricingItem.interval || PaymentInterval.ONE_TIME;
+    const paymentInterval = (pricingItem.interval ||
+      PaymentInterval.ONE_TIME) as PaymentInterval;
 
     // get payment type
     const paymentType =
@@ -231,7 +234,7 @@ export async function POST(req: Request) {
       // subscription mode
       checkoutOrder.plan = {
         interval: paymentInterval,
-        name: pricingItem.product_name,
+        name: pricingItem.product_name || pricingItem.product_id,
       };
     } else {
       // one-time mode
@@ -290,18 +293,18 @@ export async function POST(req: Request) {
       });
 
       return respData(result.checkoutInfo);
-    } catch (e: any) {
+    } catch (e: unknown) {
       // update order status to completed, means checkout failed
       await updateOrderByOrderNo(orderNo, {
         status: OrderStatus.COMPLETED, // means checkout failed
         checkoutInfo: JSON.stringify(checkoutOrder),
       });
 
-      return respErr('checkout failed: ' + e.message);
+      return respErr('checkout failed: ' + errorMessage(e, 'unknown error'));
     }
-  } catch (e: any) {
+  } catch (e: unknown) {
     console.log('checkout failed:', e);
-    return respErr('checkout failed: ' + e.message);
+    return respErr('checkout failed: ' + errorMessage(e, 'unknown error'));
   }
 }
 
@@ -325,7 +328,7 @@ async function getPaymentProductId(
         productIds[`${productId}_${checkoutCurrency}`] || productIds[productId]
       );
     }
-  } catch (e: any) {
+  } catch (e: unknown) {
     console.log('get payment product id failed:', e);
     return;
   }
@@ -352,7 +355,7 @@ async function getPromotionCode(
         promotionCodes[productId]
       );
     }
-  } catch (e: any) {
+  } catch (e: unknown) {
     console.log('get promotion code failed:', e);
     return;
   }

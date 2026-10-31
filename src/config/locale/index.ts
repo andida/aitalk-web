@@ -1,6 +1,6 @@
 import { envConfigs } from '..';
 
-export const localeNames: any = {
+export const localeNames: Record<string, string> = {
   en: 'English',
   zh: '中文',
 };

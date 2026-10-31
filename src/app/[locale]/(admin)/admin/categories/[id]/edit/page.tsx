@@ -4,6 +4,7 @@ import { PERMISSIONS, requirePermission } from '@/core/rbac';
 import { Empty } from '@/shared/blocks/common';
 import { Header, Main, MainHeader } from '@/shared/blocks/dashboard';
 import { FormCard } from '@/shared/blocks/form';
+import { readFormContextString, readFormString } from '@/shared/lib/form-action';
 import {
   findTaxonomy,
   TaxonomyStatus,
@@ -65,9 +66,13 @@ export default async function CategoryEditPage({
     ],
     passby: {
       type: 'category',
-      category: category,
+      category: { id: category.id },
     },
-    data: category,
+    data: {
+      slug: category.slug,
+      title: category.title,
+      description: category.description,
+    },
     submit: {
       button: {
         title: t('edit.buttons.submit'),
@@ -80,17 +85,29 @@ export default async function CategoryEditPage({
           throw new Error('no auth');
         }
 
-        const { category } = passby;
-        if (!user || !category || category.userId !== user.id) {
+        await requirePermission({
+          code: PERMISSIONS.CATEGORIES_WRITE,
+          redirectUrl: '/admin/no-permission',
+          locale,
+        });
+
+        if (readFormContextString(passby, 'category', 'id') !== id) {
+          throw new Error('access denied');
+        }
+        const category = await findTaxonomy({ id });
+        if (!category || category.id !== id || category.userId !== user.id) {
           throw new Error('access denied');
         }
 
-        const slug = data.get('slug') as string;
-        const title = data.get('title') as string;
-        const description = data.get('description') as string;
+        const slug = readFormString(data, 'slug');
+        const title = readFormString(data, 'title');
+        const description = readFormString(data, 'description');
 
         if (!slug?.trim() || !title?.trim()) {
           throw new Error('slug and title are required');
+        }
+        if (description === null) {
+          throw new Error('invalid description');
         }
 
         const updateCategory: UpdateTaxonomy = {

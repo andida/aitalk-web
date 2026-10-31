@@ -12,6 +12,7 @@ import {
   AITaskStatus,
   AIVideo,
 } from './types';
+import { optionalString, requireRecord } from './validation';
 
 /**
  * Fal configs
@@ -175,28 +176,41 @@ export class FalProvider implements AIProvider {
 
     if (mediaType === AIMediaType.VIDEO) {
       // handle video output
-      if (data.video && data.video.url) {
+      const singleVideo: unknown = data.video;
+      const singleVideoUrl = singleVideo
+        ? optionalString(
+            requireRecord(singleVideo, 'invalid fal video').url,
+            'invalid fal video.url'
+          )
+        : undefined;
+      if (singleVideoUrl) {
         videos = [
           {
             id: '',
             createTime: new Date(),
-            videoUrl: data.video.url,
+            videoUrl: singleVideoUrl,
           },
         ];
       } else if (data.videos && Array.isArray(data.videos)) {
-        videos = data.videos.map((video: any) => ({
+        videos = data.videos.map((video: unknown) => ({
           id: '',
           createTime: new Date(),
-          videoUrl: video.url,
+          videoUrl: optionalString(
+            requireRecord(video, 'invalid fal video').url,
+            'invalid fal video.url'
+          ),
         }));
       }
     } else {
       // handle image output (default)
       if (data.images && Array.isArray(data.images)) {
-        images = data.images.map((image: any) => ({
+        images = data.images.map((image: unknown) => ({
           id: '',
           createTime: new Date(),
-          imageUrl: image.url,
+          imageUrl: optionalString(
+            requireRecord(image, 'invalid fal image').url,
+            'invalid fal image.url'
+          ),
         }));
       }
     }
@@ -318,9 +332,9 @@ export class FalProvider implements AIProvider {
     mediaType: AIMediaType;
     model: string;
     prompt: string;
-    options: any;
-  }): any {
-    let input: any = {
+    options: Record<string, unknown> | undefined;
+  }): Record<string, unknown> {
+    let input: Record<string, unknown> = {
       prompt,
     };
 

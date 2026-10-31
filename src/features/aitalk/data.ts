@@ -8,6 +8,7 @@ import {
 import {
   buildMissingPlanItems,
   chooseCurrentLessonId,
+  chooseOwnedActivePlanId,
   filterPlanItemsForLessons,
   getNextSegmentLessonId,
   levelPlanOrder,
@@ -34,7 +35,7 @@ import type {
   UserLessonProgress,
 } from './types';
 
-type Client = SupabaseClient<any, any, any>;
+type Client = SupabaseClient;
 
 function asArray<T>(value: unknown): T[] {
   return Array.isArray(value) ? (value as T[]) : [];
@@ -286,7 +287,7 @@ export async function upsertProfile(
   const user = await requireUser(supabase);
   const current = await getProfile(supabase).catch(() => null);
   const now = new Date().toISOString();
-  const payload: Record<string, any> = {
+  const payload: Record<string, unknown> = {
     user_id: user.id,
     updated_at: now,
   };
@@ -562,6 +563,49 @@ export async function getLearningPlanItems(supabase: Client, planId: number) {
   return asArray<UserLearningPlanItem>(data);
 }
 
+export async function resolveOwnedActivePlanIdForLesson(
+  supabase: Client,
+  lessonId: number,
+  requestedPlanId?: number,
+  lessonLanguage?: string | null,
+  lessonLevel?: number | string | null
+) {
+  const user = await requireUser(supabase);
+  const itemQuery = supabase
+    .from('user_learning_plan_items')
+    .select('plan_id')
+    .eq('user_id', user.id)
+    .eq('lesson_id', lessonId);
+
+  const { data: itemData, error: itemError } = await itemQuery;
+  if (itemError) throw itemError;
+  const planIds = Array.from(
+    new Set(
+      asArray<{ plan_id: number }>(itemData)
+        .map((item) => item.plan_id)
+        .filter((planId) => Number.isSafeInteger(planId) && planId > 0)
+    )
+  );
+  if (planIds.length === 0) return null;
+
+  const { data: planData, error: planError } = await supabase
+    .from('user_learning_plans')
+    .select('id,language,level')
+    .eq('user_id', user.id)
+    .eq('status', 'active')
+    .in('id', planIds)
+    .order('updated_at', { ascending: false })
+    .order('id', { ascending: false });
+  if (planError) throw planError;
+
+  return chooseOwnedActivePlanId(
+    asArray<Pick<UserLearningPlan, 'id' | 'language' | 'level'>>(planData),
+    requestedPlanId,
+    lessonLanguage,
+    lessonLevel
+  );
+}
+
 export async function createLearningPlanItems(
   supabase: Client,
   planId: number,
@@ -636,7 +680,7 @@ export async function insertLessonAttempt(
   }
 ) {
   const user = await requireUser(supabase);
-  const payload: Record<string, any> = {
+  const payload: Record<string, unknown> = {
     user_id: user.id,
     lesson_id: input.lessonId,
     practice_type: input.practiceType,
@@ -669,7 +713,7 @@ export async function startLessonProgress(
   const now = new Date().toISOString();
   const isCompleted = existing?.status === 'completed';
   const currentPercent = existing?.progress_percent ?? 0;
-  const payload: Record<string, any> = {
+  const payload: Record<string, unknown> = {
     user_id: user.id,
     lesson_id: lessonId,
     status: isCompleted ? 'completed' : 'in_progress',
@@ -714,7 +758,7 @@ export async function completeLessonProgress(
     typeof options?.score === 'number' && Number.isFinite(options.score)
       ? Math.round(Math.min(100, Math.max(0, options.score)))
       : null;
-  const payload: Record<string, any> = {
+  const payload: Record<string, unknown> = {
     user_id: user.id,
     lesson_id: lessonId,
     status: 'completed',
@@ -778,11 +822,13 @@ async function markLearningPlanItemStarted(
     .eq('lesson_id', lessonId)
     .limit(1);
   if (error) throw error;
-  const item = first(asArray<any>(data));
+  const item = first(
+    asArray<Pick<UserLearningPlanItem, 'id' | 'status' | 'started_at'>>(data)
+  );
   if (!item || item.status === 'completed') return;
 
   const now = new Date().toISOString();
-  const updateData: Record<string, any> = {
+  const updateData: Record<string, unknown> = {
     status: 'in_progress',
     updated_at: now,
   };
@@ -810,11 +856,13 @@ async function markLearningPlanItemCompleted(
     .eq('lesson_id', lessonId)
     .limit(1);
   if (error) throw error;
-  const item = first(asArray<any>(data));
+  const item = first(
+    asArray<Pick<UserLearningPlanItem, 'id' | 'started_at'>>(data)
+  );
   if (!item) return;
 
   const now = new Date().toISOString();
-  const updateData: Record<string, any> = {
+  const updateData: Record<string, unknown> = {
     status: 'completed',
     completed_at: now,
     updated_at: now,
@@ -1081,7 +1129,7 @@ export async function getUsage(supabase: Client) {
 
 export async function invokeCourseTutorAgent(
   supabase: Client,
-  body: Record<string, any>
+  body: Record<string, unknown>
 ) {
   const agentUrl =
     process.env.COURSE_TUTOR_AGENT_URL ||
@@ -1131,7 +1179,7 @@ function parseJsonOrText(value: string) {
 
 export async function getTextSpeech(
   supabase: Client,
-  body: Record<string, any>
+  body: Record<string, unknown>
 ) {
   const { data, error } = await supabase.functions.invoke('text-speech', {
     body,

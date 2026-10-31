@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "aitalk-web",
+  "name": "aitalk-web-lp",
   "main": ".open-next/worker.js",
   "compatibility_date": "2026-06-12",
   "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
@@ -15,11 +15,11 @@
   "services": [
     {
       "binding": "WORKER_SELF_REFERENCE",
-      "service": "aitalk-web",
+      "service": "aitalk-web-lp",
     },
   ],
   "vars": {
-    "NEXT_PUBLIC_APP_URL": "https://aitalk-web.openapiproxy.workers.dev",
+    "NEXT_PUBLIC_APP_URL": "https://aitalk.im",
     "NEXT_PUBLIC_APP_NAME": "AITalk",
     "NEXT_PUBLIC_APP_DESCRIPTION": "AI speaking practice for language learners.",
     "NEXT_PUBLIC_APP_LOGO": "/logo.svg",

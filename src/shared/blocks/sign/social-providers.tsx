@@ -29,15 +29,13 @@ export function SocialProviders({
   const popupRef = useRef<Window | null>(null);
   const popupTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  if (callbackUrl) {
-    if (
-      locale !== defaultLocale &&
-      callbackUrl.startsWith('/') &&
-      !callbackUrl.startsWith(`/${locale}`)
-    ) {
-      callbackUrl = `/${locale}${callbackUrl}`;
-    }
-  }
+  const localizedCallbackUrl =
+    callbackUrl &&
+    locale !== defaultLocale &&
+    callbackUrl.startsWith('/') &&
+    !callbackUrl.startsWith(`/${locale}`)
+      ? `/${locale}${callbackUrl}`
+      : callbackUrl;
 
   const cleanupPopup = useCallback(() => {
     if (popupTimerRef.current) {
@@ -93,11 +91,11 @@ export function SocialProviders({
       toast.error('Popup blocked. Trying redirect...');
       setLoading(false);
       await signIn.social(
-        { provider, callbackURL: callbackUrl },
+        { provider, callbackURL: localizedCallbackUrl },
         {
           onRequest: () => setLoading(true),
           onSuccess: () => setIsShowSignModal(false),
-          onError: (e: any) => {
+          onError: (e) => {
             toast.error(e?.error?.message || 'Sign in failed');
             setLoading(false);
           },
@@ -128,7 +126,6 @@ export function SocialProviders({
       name: 'google',
       title: t('google_sign_in_title'),
       icon: <GoogleIcon className="size-4" />,
-      onClick: () => handleSignIn({ provider: 'google' }),
     });
   }
 
@@ -137,7 +134,6 @@ export function SocialProviders({
       name: 'github',
       title: t('github_sign_in_title'),
       icon: <GitHubIcon className="size-4" />,
-      onClick: () => handleSignIn({ provider: 'github' }),
     });
   }
 
@@ -155,7 +151,9 @@ export function SocialProviders({
           variant="outline"
           className={cn('w-full gap-2')}
           disabled={loading}
-          onClick={provider.onClick}
+          onClick={() => {
+            if (provider.name) void handleSignIn({ provider: provider.name });
+          }}
         >
           {provider.icon}
           <h3>{provider.title}</h3>

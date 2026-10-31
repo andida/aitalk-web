@@ -1,14 +1,16 @@
+import { scalarValue } from './value';
+
 export function JsonPreview({
-  value,
+  value: suppliedValue,
   placeholder,
-  metadata,
   className,
 }: {
-  value: string;
+  value: unknown;
   placeholder?: string;
-  metadata?: Record<string, any>;
+  metadata?: unknown;
   className?: string;
 }) {
+  const value = scalarValue(suppliedValue);
   if (!value) {
     if (placeholder) {
       return <div className={className}>{placeholder}</div>;
@@ -21,10 +23,17 @@ export function JsonPreview({
     return <div className={className}>{value}</div>;
   }
 
+  let formatted: string | undefined;
   try {
-    const json = JSON.parse(value);
-    return <pre className={className}>{JSON.stringify(json, null, 2)}</pre>;
-  } catch (error) {
-    return <div className={className}>{value}</div>;
+    const parsed: unknown = JSON.parse(value);
+    formatted = JSON.stringify(parsed, null, 2);
+  } catch {
+    // Invalid JSON is displayed unchanged.
   }
+
+  return formatted === undefined ? (
+    <div className={className}>{value}</div>
+  ) : (
+    <pre className={className}>{formatted}</pre>
+  );
 }

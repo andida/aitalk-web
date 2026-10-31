@@ -1,7 +1,7 @@
 import { cache } from 'react';
 import { and, eq, gt, inArray, isNull, or } from 'drizzle-orm';
 
-import { db } from '@/core/db';
+import { db, type DatabaseSession } from '@/core/db';
 import { permission, role, rolePermission, userRole } from '@/config/db/schema';
 import { getUuid } from '@/shared/lib/hash';
 import { getAllConfigs } from '@/shared/models/config';
@@ -395,7 +395,7 @@ export async function assignRolesToUser(
   userId: string,
   roleIds: string[]
 ): Promise<void> {
-  await db().transaction(async (tx: any) => {
+  await db().transaction(async (tx: DatabaseSession) => {
     await tx.delete(userRole).where(eq(userRole.userId, userId));
 
     if (roleIds.length > 0) {
@@ -419,10 +419,10 @@ export async function getUsersByRole(roleId: string): Promise<string[]> {
     .from(userRole)
     .where(eq(userRole.roleId, roleId));
 
-  return result.map((r: any) => r.userId);
+  return result.map((r: Pick<typeof userRole.$inferSelect, 'userId'>) => r.userId);
 }
 
-export async function grantRoleForNewUser(user: User) {
+export async function grantRoleForNewUser(user: Pick<User, 'id' | 'createdAt'>) {
   try {
     // get configs from db
     const configs = await getAllConfigs();

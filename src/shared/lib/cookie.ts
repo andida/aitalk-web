@@ -68,27 +68,35 @@ export function getCookieFromHeader(
 }
 
 export function getHeaderValue(
-  ctx: any,
+  ctx: unknown,
   headerName: string
 ): string | undefined {
-  const h = ctx?.headers ?? ctx?.request?.headers;
-  if (!h) return undefined;
+  if (!ctx || typeof ctx !== 'object') return undefined;
+  const context = ctx as { headers?: unknown; request?: { headers?: unknown } };
+  const h = context.headers ?? context.request?.headers;
+  if (!h || typeof h !== 'object') return undefined;
 
-  if (typeof h.get === 'function') {
-    return h.get(headerName) ?? undefined;
+  if ('get' in h && typeof h.get === 'function') {
+    const value: unknown = h.get(headerName);
+    return typeof value === 'string' ? value : undefined;
   }
 
-  if (typeof h === 'object') {
-    // ctx.headers in your screenshot looks like a plain object
-    return h[headerName] ?? h[headerName.toLowerCase()] ?? undefined;
-  }
-
-  return undefined;
+  const headers = h as Record<string, unknown>;
+  const value = headers[headerName] ?? headers[headerName.toLowerCase()];
+  return typeof value === 'string' ? value : undefined;
 }
 
-export function getCookieFromCtx(ctx: any, name: string): string | undefined {
-  if (typeof ctx?.getCookie === 'function') {
-    const v = ctx.getCookie(name);
+export function getCookieFromCtx(
+  ctx: unknown,
+  name: string
+): string | undefined {
+  if (
+    ctx &&
+    typeof ctx === 'object' &&
+    'getCookie' in ctx &&
+    typeof ctx.getCookie === 'function'
+  ) {
+    const v: unknown = ctx.getCookie(name);
     if (typeof v === 'string') return v;
   }
 

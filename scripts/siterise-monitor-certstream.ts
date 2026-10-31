@@ -136,7 +136,7 @@ function collectCertstreamCandidates({
   });
 }
 
-function getOptions(args: Record<string, any>): DiscoveryRuntimeOptions {
+function getOptions(args: Record<string, string | boolean | undefined>): DiscoveryRuntimeOptions {
   return {
     days: parsePositiveInt(args.days, 90),
     candidateLimit: parsePositiveInt(args.candidateLimit, 1000),
@@ -152,7 +152,7 @@ function getOptions(args: Record<string, any>): DiscoveryRuntimeOptions {
       args.minDr || process.env.DISCOVERY_MIN_DR,
       0
     ),
-    country: normalizeCountry(args.country || 'global'),
+    country: normalizeCountry(String(args.country || 'global')),
     dryRun: Boolean(args.dryRun),
     buildLeaderboard: args.buildLeaderboard !== false,
     dnsTimeoutMs: parsePositiveInt(
@@ -177,7 +177,7 @@ function parseMessage(data: unknown): CertStreamMessage | null {
 }
 
 function parseArgs(args: string[]) {
-  const parsed: Record<string, any> = {};
+  const parsed: Record<string, string | boolean | undefined> = {};
 
   for (let i = 0; i < args.length; i += 1) {
     const arg = args[i];

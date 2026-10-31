@@ -2,6 +2,7 @@ import { getTranslations } from 'next-intl/server';
 
 import { Empty } from '@/shared/blocks/common';
 import { FormCard } from '@/shared/blocks/form';
+import { readFormContextString, readFormString } from '@/shared/lib/form-action';
 import { getNonceStr, getUuid } from '@/shared/lib/hash';
 import { ApikeyStatus, createApikey, NewApikey } from '@/shared/models/apikey';
 import { getUserInfo } from '@/shared/models/user';
@@ -28,18 +29,21 @@ export default async function CreateApiKeyPage() {
       },
     ],
     passby: {
-      user: user,
+      user: { id: user.id },
     },
     submit: {
-      handler: async (data: FormData, passby: any) => {
+      handler: async (data: FormData, passby?: unknown) => {
         'use server';
 
-        const { user } = passby;
+        const user = await getUserInfo();
         if (!user) {
           throw new Error('no auth');
         }
+        if (readFormContextString(passby, 'user', 'id') !== user.id) {
+          throw new Error('no permission');
+        }
 
-        const title = data.get('title') as string;
+        const title = readFormString(data, 'title');
         if (!title?.trim()) {
           throw new Error('title is required');
         }

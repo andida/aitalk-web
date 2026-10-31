@@ -76,10 +76,11 @@ export async function POST(request: Request) {
         'Content-Type': response.headers.get('content-type') || 'audio/mpeg',
       },
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const caughtError = error instanceof Error ? error : undefined;
     console.error('aitalk_text_speech_failed', {
-      message: error?.message,
+      message: caughtError?.message,
     });
-    return jsonError(error?.message || 'Text-to-speech failed.', 500);
+    return jsonError(caughtError?.message || 'Text-to-speech failed.', 500);
   }
 }

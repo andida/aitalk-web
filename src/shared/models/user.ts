@@ -97,7 +97,9 @@ export async function getSignUser() {
 }
 
 export async function isEmailVerified(email: string): Promise<boolean> {
-  const normalized = String(email || '').trim().toLowerCase();
+  const normalized = String(email || '')
+    .trim()
+    .toLowerCase();
   if (!normalized) return false;
 
   const [row] = await db()
@@ -109,17 +111,18 @@ export async function isEmailVerified(email: string): Promise<boolean> {
   return !!row?.emailVerified;
 }
 
-export async function appendUserToResult(result: any) {
-  if (!result || !result.length) {
-    return result;
+export async function appendUserToResult<T extends { userId: string }>(
+  result: T[]
+): Promise<(T & { user: User | undefined })[]> {
+  if (!result) return result;
+  if (!result.length) {
+    return [];
   }
 
-  const userIds = result.map((item: any) => item.userId);
-  const users = await getUserByUserIds(userIds);
-  result = result.map((item: any) => {
-    const user = users.find((user: any) => user.id === item.userId);
+  const userIds = result.map((item) => item.userId);
+  const users: User[] = await getUserByUserIds(userIds);
+  return result.map((item) => {
+    const user = users.find((user) => user.id === item.userId);
     return { ...item, user };
   });
-
-  return result;
 }

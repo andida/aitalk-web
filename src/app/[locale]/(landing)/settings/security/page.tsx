@@ -2,8 +2,8 @@ import { getTranslations } from 'next-intl/server';
 
 import { Empty } from '@/shared/blocks/common';
 import { PanelCard } from '@/shared/blocks/panel';
+import { readFormContextString, readFormString } from '@/shared/lib/form-action';
 import { getUserInfo, UpdateUser, updateUser } from '@/shared/models/user';
-import { Button as ButtonType } from '@/shared/types/blocks/common';
 import { Form as FormType } from '@/shared/types/blocks/form';
 
 export default async function SecurityPage() {
@@ -42,20 +42,23 @@ export default async function SecurityPage() {
         validation: { required: true },
       },
     ],
-    data: user,
+    data: { email: user.email },
     passby: {
-      user: user,
+      user: { id: user.id },
     },
     submit: {
-      handler: async (data: FormData, passby: any) => {
+      handler: async (data: FormData, passby?: unknown) => {
         'use server';
 
-        const { user } = passby;
+        const user = await getUserInfo();
         if (!user) {
           throw new Error('no auth');
         }
+        if (readFormContextString(passby, 'user', 'id') !== user.id) {
+          throw new Error('no permission');
+        }
 
-        const password = data.get('password') as string;
+        const password = readFormString(data, 'password');
         if (!password?.trim()) {
           throw new Error('password is required');
         }

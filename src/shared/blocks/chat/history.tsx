@@ -162,7 +162,10 @@ export function ChatHistory() {
     if (!user || isCheckSign) {
       return;
     }
-    fetchChats();
+    const timer = window.setTimeout(() => {
+      void fetchChats();
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, [fetchChats, isCheckSign, user]);
 
   useEffect(() => {

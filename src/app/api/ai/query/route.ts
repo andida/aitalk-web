@@ -60,8 +60,8 @@ export async function POST(req: Request) {
     task.taskResult = updateAITask.taskResult || null;
 
     return respData(task);
-  } catch (e: any) {
+  } catch (e: unknown) {
     console.log('ai query failed', e);
-    return respErr(e.message);
+    return respErr(e instanceof Error ? e.message : 'ai query failed');
   }
 }

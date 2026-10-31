@@ -31,7 +31,7 @@ export default async function AdminPermissionsPage({
     { title: t('list.crumbs.permissions'), is_active: true },
   ];
 
-  const table: Table = {
+  const table: Table<Awaited<ReturnType<typeof getPermissions>>[number]> = {
     columns: [
       { name: 'code', title: t('fields.code') },
       { name: 'title', title: t('fields.title') },

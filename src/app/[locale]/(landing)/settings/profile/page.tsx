@@ -2,6 +2,7 @@ import { getTranslations } from 'next-intl/server';
 
 import { Empty } from '@/shared/blocks/common';
 import { FormCard } from '@/shared/blocks/form';
+import { readFormContextString, readFormString } from '@/shared/lib/form-action';
 import { getUserInfo, UpdateUser, updateUser } from '@/shared/models/user';
 import { Form as FormType } from '@/shared/types/blocks/form';
 
@@ -31,30 +32,32 @@ export default async function ProfilePage() {
         },
       },
     ],
-    data: user,
+    data: { email: user.email, name: user.name, image: user.image },
     passby: {
-      user: user,
+      user: { id: user.id },
     },
     submit: {
-      handler: async (data: FormData, passby: any) => {
+      handler: async (data: FormData, passby?: unknown) => {
         'use server';
 
-        const { user } = passby;
+        const user = await getUserInfo();
         if (!user) {
           throw new Error('no auth');
         }
+        if (readFormContextString(passby, 'user', 'id') !== user.id) {
+          throw new Error('no permission');
+        }
 
-        const name = data.get('name') as string;
+        const name = readFormString(data, 'name');
         if (!name?.trim()) {
           throw new Error('name is required');
         }
 
-        const image = data.get('image');
-        console.log('image', image, typeof image);
+        const image = readFormString(data, 'image');
 
         const updatedUser: UpdateUser = {
           name: name.trim(),
-          image: image as string,
+          image,
         };
 
         await updateUser(user.id, updatedUser);

@@ -1,6 +1,5 @@
-import { ComponentType, lazy, Suspense } from 'react';
-
-const iconCache: { [key: string]: ComponentType<any> } = {};
+import { lazy, Suspense } from 'react';
+import type { LucideProps } from 'lucide-react';
 
 const remixToLucideIconMap: Record<string, string> = {
   RiAddLine: 'Plus',
@@ -27,46 +26,54 @@ const remixToLucideIconMap: Record<string, string> = {
 };
 
 function normalizeIconName(name: string) {
-  return remixToLucideIconMap[name] || name;
+  return Object.prototype.hasOwnProperty.call(remixToLucideIconMap, name)
+    ? remixToLucideIconMap[name]
+    : name;
 }
+
+type NamedIconProps = LucideProps & { name: string };
+
+// One static lazy boundary; each instance selects its own icon from Lucide's
+// icon-only registry. No render-time mutation or untrusted module-export cast.
+const LazyIcon = lazy(async () => {
+  const iconModule = await import('lucide-react').catch(async (error: unknown) => {
+    console.error('Failed to load lucide-react:', error);
+    // Retry once. A recovered module must resolve each instance's actual name;
+    // a shared lazy boundary must not permanently turn every icon into fallback.
+    return import('lucide-react');
+  });
+  const { icons, HelpCircle } = iconModule;
+  // Public exports include aliases absent from the registry (e.g. Home).
+  // Resolve only exports that are actual members of the icon registry.
+  const knownIcons = new Map<unknown, (typeof icons)[keyof typeof icons]>(
+    Object.values(icons).map((icon) => [icon, icon])
+  );
+  const aliases: Record<string, (typeof icons)[keyof typeof icons]> = Object.create(null);
+  for (const [name, exported] of Object.entries(iconModule)) {
+    const icon = knownIcons.get(exported);
+    if (icon) aliases[name] = icon;
+  }
+  function LoadedIcon({ name, ...props }: NamedIconProps) {
+    const Icon = Object.prototype.hasOwnProperty.call(aliases, name)
+      ? aliases[name]
+      : HelpCircle;
+    return <Icon {...props} />;
+  }
+  return { default: LoadedIcon };
+});
 
 export function SmartIcon({
   name,
   size = 24,
   className,
   ...props
-}: {
+}: LucideProps & {
   name: string;
   size?: number;
-  className?: string;
-  [key: string]: any;
 }) {
-  const iconName = normalizeIconName(name);
-
-  if (!iconCache[iconName]) {
-    iconCache[iconName] = lazy(async () => {
-      try {
-        const module = await import('lucide-react');
-        const IconComponent = module[iconName as keyof typeof module];
-        if (IconComponent) {
-          return { default: IconComponent as ComponentType<any> };
-        } else {
-          console.warn(`Icon "${iconName}" not found in lucide-react`);
-          return { default: module.HelpCircle as ComponentType<any> };
-        }
-      } catch (error) {
-        console.error(`Failed to load lucide-react:`, error);
-        const fallbackModule = await import('lucide-react');
-        return { default: fallbackModule.HelpCircle as ComponentType<any> };
-      }
-    });
-  }
-
-  const IconComponent = iconCache[iconName];
-
   return (
     <Suspense fallback={<div style={{ width: size, height: size }} />}>
-      <IconComponent size={size} className={className} {...props} />
+      <LazyIcon name={normalizeIconName(name)} size={size} className={className} {...props} />
     </Suspense>
   );
 }

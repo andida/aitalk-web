@@ -19,7 +19,7 @@ import {
 } from '@/shared/types/blocks/common';
 import { Table as TableType } from '@/shared/types/blocks/table';
 
-export function TableCard({
+export function TableCard<Row extends object>({
   title,
   description,
   buttons,
@@ -31,7 +31,7 @@ export function TableCard({
   description?: string;
   buttons?: ButtonType[];
   tabs?: TabType[];
-  table: TableType;
+  table: TableType<Row>;
   className?: string;
 }) {
   return (
@@ -56,7 +56,11 @@ export function TableCard({
                     href={button.url || ''}
                     target={button.target || '_self'}
                   >
-                    {button.icon && <SmartIcon name={button.icon as string} />}
+                    {typeof button.icon === 'string' ? (
+                      <SmartIcon name={button.icon} />
+                    ) : (
+                      button.icon
+                    )}
                     {button.title}
                   </Link>
                 </Button>

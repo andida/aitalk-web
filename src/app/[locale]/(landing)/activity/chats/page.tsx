@@ -2,15 +2,10 @@ import { getTranslations } from 'next-intl/server';
 
 import { Empty } from '@/shared/blocks/common';
 import { TableCard } from '@/shared/blocks/table';
-import {
-  Chat,
-  ChatStatus,
-  getChats,
-  getChatsCount,
-} from '@/shared/models/chat';
+import { Chat, getChats, getChatsCount } from '@/shared/models/chat';
 import { getUserInfo } from '@/shared/models/user';
-import { Button, Tab } from '@/shared/types/blocks/common';
-import { type Table } from '@/shared/types/blocks/table';
+import { Button } from '@/shared/types/blocks/common';
+import { type Table, type TableAction } from '@/shared/types/blocks/table';
 
 export default async function ChatsPage({
   searchParams,
@@ -38,7 +33,7 @@ export default async function ChatsPage({
     userId: user.id,
   });
 
-  const table: Table = {
+  const table: Table<Chat> = {
     title: t('list.title'),
     columns: [
       { name: 'title', title: t('fields.title'), type: 'copy' },
@@ -47,11 +42,10 @@ export default async function ChatsPage({
       { name: 'provider', title: t('fields.provider'), type: 'label' },
       { name: 'createdAt', title: t('fields.created_at'), type: 'time' },
       {
-        name: 'action',
         title: t('fields.action'),
         type: 'dropdown',
         callback: (item: Chat) => {
-          const items: Button[] = [
+          const items: TableAction[] = [
             {
               title: t('list.buttons.view'),
               url: `/chat/${item.id}`,

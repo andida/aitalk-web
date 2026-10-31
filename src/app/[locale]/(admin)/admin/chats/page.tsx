@@ -3,8 +3,8 @@ import { getTranslations, setRequestLocale } from 'next-intl/server';
 import { PERMISSIONS, requirePermission } from '@/core/rbac';
 import { Header, Main, MainHeader } from '@/shared/blocks/dashboard';
 import { TableCard } from '@/shared/blocks/table';
-import { getChats, getChatsCount } from '@/shared/models/chat';
-import { Button, Crumb, Tab } from '@/shared/types/blocks/common';
+import { getChats, getChatsCount, type Chat } from '@/shared/models/chat';
+import { Button, Crumb } from '@/shared/types/blocks/common';
 import { type Table } from '@/shared/types/blocks/table';
 
 export default async function ChatsPage({
@@ -43,7 +43,7 @@ export default async function ChatsPage({
     getUser: true,
   });
 
-  const table: Table = {
+  const table: Table<Chat> = {
     columns: [
       { name: 'title', title: t('fields.title'), type: 'copy' },
       { name: 'user', title: t('fields.user'), type: 'user' },
@@ -52,7 +52,6 @@ export default async function ChatsPage({
       { name: 'model', title: t('fields.model'), type: 'label' },
       { name: 'provider', title: t('fields.provider'), type: 'label' },
       {
-        name: 'action',
         title: t('fields.action'),
         type: 'dropdown',
         callback: (item) => {

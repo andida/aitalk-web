@@ -8,6 +8,35 @@ import { ChatBox } from '@/shared/blocks/chat/box';
 import { Loader } from '@/shared/components/ai-elements/loader';
 import { Chat } from '@/shared/types/chat';
 
+type ApiResponse<T> = {
+  code: number;
+  message?: string;
+  data?: T;
+};
+
+type ChatPayload = {
+  id?: string;
+  title?: string;
+  createdAt?: string;
+  model?: string;
+  provider?: string;
+  parts?: string;
+  metadata?: string;
+  content?: string;
+};
+
+type MessagePayload = {
+  id?: string;
+  role?: UIMessage['role'];
+  parts?: string;
+  metadata?: string;
+};
+
+function readJson(value: string | undefined) {
+  if (!value) return undefined;
+  return JSON.parse(value) as unknown;
+}
+
 export default function ChatPage() {
   const params = useParams();
 
@@ -25,26 +54,26 @@ export default function ChatPage() {
       if (!resp.ok) {
         throw new Error(`request failed with status: ${resp.status}`);
       }
-      const { code, message, data } = (await resp.json()) as any;
-      if (code !== 0) {
+      const { code, message, data } = (await resp.json()) as ApiResponse<ChatPayload>;
+      if (code !== 0 || !data?.id) {
         throw new Error(message);
       }
 
       setInitialChat({
         id: data.id,
-        title: data.title,
-        createdAt: data.createdAt,
-        model: data.model,
-        provider: data.provider,
-        parts: data.parts ? JSON.parse(data.parts) : [],
-        metadata: data.metadata ? JSON.parse(data.metadata) : undefined,
-        content: data.content ? JSON.parse(data.content) : undefined,
-      } as Chat);
+        title: data.title ?? '',
+        createdAt: data.createdAt ? new Date(data.createdAt) : new Date(),
+        model: data.model ?? '',
+        provider: data.provider ?? '',
+        parts: readJson(data.parts) ?? [],
+        metadata: readJson(data.metadata),
+        content: readJson(data.content),
+      });
 
       if (data.id) {
         fetchMessages(data.id);
       }
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.log('fetch chat failed:', e);
     }
   };
@@ -58,27 +87,39 @@ export default function ChatPage() {
       if (!resp.ok) {
         throw new Error(`request failed with status: ${resp.status}`);
       }
-      const { code, message, data } = (await resp.json()) as any;
+      const { code, message, data } = (await resp.json()) as ApiResponse<{
+        list?: MessagePayload[];
+      }>;
       if (code !== 0) {
         throw new Error(message);
       }
 
-      const { list } = data;
+      const list = data?.list ?? [];
       setInitialMessages(
-        list.map((item: any) => ({
-          id: item.id,
-          role: item.role,
-          parts: item.parts ? JSON.parse(item.parts) : [],
-          metadata: item.metadata ? JSON.parse(item.metadata) : undefined,
-        })) as UIMessage[]
+        list.flatMap((item) => {
+          if (!item.id || !item.role) return [];
+          return [
+            {
+              id: item.id,
+              role: item.role,
+              parts: readJson(item.parts) ?? [],
+              metadata: readJson(item.metadata),
+            } as UIMessage,
+          ];
+        })
       );
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.log('fetch messages failed:', e);
     }
   };
 
   useEffect(() => {
-    fetchChat(params.id as string);
+    const chatId = typeof params.id === 'string' ? params.id : '';
+    if (!chatId) return;
+    const timer = window.setTimeout(() => {
+      void fetchChat(chatId);
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, [params.id]);
 
   return initialChat && initialMessages ? (

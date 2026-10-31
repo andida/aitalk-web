@@ -21,7 +21,7 @@ type LookupRequest = {
   month?: string;
 };
 
-function json(data: any, status = 200) {
+function json(data: unknown, status = 200) {
   return Response.json(data, {
     status,
     headers: {

@@ -1,5 +1,3 @@
-import moment from 'moment';
-
 import { Link } from '@/core/i18n/navigation';
 import {
   Avatar,
@@ -7,19 +5,20 @@ import {
   AvatarImage,
 } from '@/shared/components/ui/avatar';
 import { cn } from '@/shared/lib/utils';
-import { User as UserType } from '@/shared/models/user';
+
+import { userValue } from './value';
 
 export function User({
-  value,
+  value: suppliedValue,
   placeholder,
-  metadata,
   className,
 }: {
-  value: UserType;
+  value: unknown;
   placeholder?: string;
-  metadata?: Record<string, any>;
+  metadata?: unknown;
   className?: string;
 }) {
+  const value = userValue(suppliedValue);
   if (!value) {
     if (placeholder) {
       return <div className={className}>{placeholder}</div>;
@@ -30,8 +29,9 @@ export function User({
 
   return (
     <Link
-      href={`/admin/users?email=${value.email}`}
+      href={`/admin/users?email=${encodeURIComponent(value.email)}`}
       target="_blank"
+      rel="noopener noreferrer"
       className={cn('flex items-center gap-2', className)}
     >
       <Avatar className={className}>

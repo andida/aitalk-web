@@ -1,6 +1,7 @@
 "use client";
 import { ReactNode } from "react";
-import { motion, Variants } from "motion/react";
+import { Variants } from "motion/react";
+import { MotionElement } from "@/shared/components/ui/motion-element";
 import React from "react";
 
 export type PresetType =
@@ -115,22 +116,20 @@ function AnimatedGroup({
   const containerVariants = variants?.container || selectedVariants.container;
   const itemVariants = variants?.item || selectedVariants.item;
 
-  const MotionComponent = React.useMemo(() => motion(as), [as]);
-  const MotionChild = React.useMemo(() => motion(asChild), [asChild]);
-
   return (
-    <MotionComponent
+    <MotionElement
+      as={as}
       initial="hidden"
       animate="visible"
       variants={containerVariants}
       className={className}
     >
-      {React.Children.map(children, (child, index) => (
-        <MotionChild key={index} variants={itemVariants}>
+      {React.Children.map(children, (child) => (
+        <MotionElement as={asChild} variants={itemVariants}>
           {child}
-        </MotionChild>
+        </MotionElement>
       ))}
-    </MotionComponent>
+    </MotionElement>
   );
 }
 

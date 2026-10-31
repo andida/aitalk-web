@@ -1,4 +1,5 @@
 import { redirect } from '@/core/i18n/navigation';
+import { withAccessCheck } from '@/core/rbac/with-access-check';
 import { getSignUser } from '@/shared/models/user';
 import {
   hasAllPermissions,
@@ -303,8 +304,8 @@ export async function checkPageAccess({
 /**
  * Higher-order function for API routes with permission check
  */
-export function withPermission<T extends (...args: any[]) => any>(
-  handler: T,
+export function withPermission<Args extends unknown[], Result>(
+  handler: (...args: Args) => Result,
   {
     code,
     locale,
@@ -312,18 +313,15 @@ export function withPermission<T extends (...args: any[]) => any>(
     code: string;
     locale?: string;
   }
-): T {
-  return (async (...args: Parameters<T>) => {
-    await requirePermission({ code, locale });
-    return handler(...args);
-  }) as T;
+): (...args: Args) => Promise<Awaited<Result>> {
+  return withAccessCheck(() => requirePermission({ code, locale }), handler);
 }
 
 /**
  * Higher-order function for API routes with role check
  */
-export function withRole<T extends (...args: any[]) => any>(
-  handler: T,
+export function withRole<Args extends unknown[], Result>(
+  handler: (...args: Args) => Result,
   {
     roleName,
     locale,
@@ -331,9 +329,6 @@ export function withRole<T extends (...args: any[]) => any>(
     roleName: string;
     locale?: string;
   }
-): T {
-  return (async (...args: Parameters<T>) => {
-    await requireRole({ roleName, locale });
-    return handler(...args);
-  }) as T;
+): (...args: Args) => Promise<Awaited<Result>> {
+  return withAccessCheck(() => requireRole({ roleName, locale }), handler);
 }

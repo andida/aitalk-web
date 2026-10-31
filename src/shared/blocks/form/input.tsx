@@ -3,18 +3,19 @@ import { ControllerRenderProps } from 'react-hook-form';
 import { Input as InputComponent } from '@/shared/components/ui/input';
 import { FormField } from '@/shared/types/blocks/form';
 
+import { inputValue } from './value';
+
 export function Input({
   field,
   formField,
-  data,
 }: {
   field: FormField;
   formField: ControllerRenderProps<Record<string, unknown>, string>;
-  data?: any;
+  data?: unknown;
 }) {
   return (
     <InputComponent
-      value={formField.value as string}
+      value={inputValue(formField.value)}
       onChange={formField.onChange}
       type={field.type || 'text'}
       placeholder={field.placeholder}

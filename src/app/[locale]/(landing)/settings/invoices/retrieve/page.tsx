@@ -48,22 +48,27 @@ export default async function RetrieveInvoicePage({
   }
 
   let invoiceUrl = '';
+  let errorMessage = '';
 
   try {
     const invoice = await paymentProvider.getPaymentInvoice?.({
       invoiceId: order.invoiceId,
     });
-    if (!invoice?.invoiceUrl) {
-      return <Empty message="invoice url not found" />;
+    if (invoice?.invoiceUrl) {
+      invoiceUrl = invoice.invoiceUrl;
+      await updateOrderByOrderNo(order.orderNo, {
+        invoiceUrl,
+      });
     }
+  } catch (error: unknown) {
+    errorMessage =
+      error instanceof Error && error.message
+        ? error.message
+        : 'get invoice failed';
+  }
 
-    invoiceUrl = invoice.invoiceUrl;
-
-    await updateOrderByOrderNo(order.orderNo, {
-      invoiceUrl: invoiceUrl,
-    });
-  } catch (error: any) {
-    return <Empty message={error.message || 'get invoice failed'} />;
+  if (errorMessage) {
+    return <Empty message={errorMessage} />;
   }
 
   if (!invoiceUrl) {

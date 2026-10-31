@@ -1,6 +1,4 @@
 import { redirect } from 'next/navigation';
-import { BookMarked, CalendarDays, Clock, LogOut } from 'lucide-react';
-
 import { signOutAction } from '@/features/aitalk/actions';
 import {
   getCollectList,
@@ -9,9 +7,12 @@ import {
   getStatistics,
   getUsage,
 } from '@/features/aitalk/data';
+import { membershipLabel } from '@/features/aitalk/lib/membership';
 import { withLocale } from '@/features/aitalk/lib/paths';
 import { createAitalkServerClient } from '@/features/aitalk/supabase/server';
 import { AitalkAppShell } from '@/features/aitalk/ui/app-shell';
+import { BookMarked, CalendarDays, Clock, LogOut } from 'lucide-react';
+
 import { Button } from '@/shared/components/ui/button';
 import { Card, CardContent } from '@/shared/components/ui/card';
 
@@ -34,9 +35,9 @@ export default async function MePage({
       dayCount: '0',
     })),
     getCollectList(supabase, profile?.learn_language).catch(() => []),
-    getUsage(supabase).catch(() => []),
+    getUsage(supabase).catch(() => null),
   ]);
-  const usageRow = usage[0] ?? {};
+  const usageRow = usage?.[0];
 
   return (
     <AitalkAppShell active="/me">
@@ -65,9 +66,17 @@ export default async function MePage({
         </section>
 
         <div className="mt-6 grid gap-4 md:grid-cols-3">
-          <Metric icon={CalendarDays} label="Study days" value={stats.dayCount} />
+          <Metric
+            icon={CalendarDays}
+            label="Study days"
+            value={stats.dayCount}
+          />
           <Metric icon={Clock} label="Today minutes" value={stats.todayTime} />
-          <Metric icon={BookMarked} label="Saved items" value={`${collects.length}`} />
+          <Metric
+            icon={BookMarked}
+            label="Saved items"
+            value={`${collects.length}`}
+          />
         </div>
 
         <div className="mt-6 grid gap-4 md:grid-cols-2">
@@ -92,12 +101,12 @@ export default async function MePage({
             <CardContent className="px-5">
               <h2 className="text-xl font-black">Account status</h2>
               <dl className="mt-4 grid gap-3 text-sm">
-                <Row
-                  label="VIP"
-                  value={usageRow.vipStatus || usageRow.vip_status || 'expired'}
-                />
+                <Row label="VIP" value={membershipLabel(usageRow, locale)} />
                 <Row label="Total minutes" value={stats.totalTime} />
-                <Row label="Plan" value={profile?.learning_plan_created ? 'Ready' : 'Missing'} />
+                <Row
+                  label="Plan"
+                  value={profile?.learning_plan_created ? 'Ready' : 'Missing'}
+                />
               </dl>
             </CardContent>
           </Card>
@@ -112,13 +121,14 @@ export default async function MePage({
                 className="rounded-2xl border border-emerald-950/10 p-3 dark:border-white/10"
               >
                 <div className="font-bold">
-                  {item.word?.word ||
-                    item.word?.text ||
-                    item.word?.content ||
-                    `Saved item ${item.id}`}
+                  {[item.word?.word, item.word?.text, item.word?.content].find(
+                    (value): value is string =>
+                      typeof value === 'string' && value.length > 0
+                  ) || `Saved item ${item.id}`}
                 </div>
                 <div className="text-sm text-zinc-600 dark:text-zinc-300">
-                  {item.type || 'word'} | {item.language || profile?.learn_language}
+                  {item.type || 'word'} |{' '}
+                  {item.language || profile?.learn_language}
                 </div>
               </div>
             ))}

@@ -6,6 +6,7 @@ import { TableCard } from '@/shared/blocks/table';
 import {
   getSubscriptions,
   getSubscriptionsCount,
+  type Subscription,
 } from '@/shared/models/subscription';
 import { Crumb, Tab } from '@/shared/types/blocks/common';
 import { type Table } from '@/shared/types/blocks/table';
@@ -74,7 +75,7 @@ export default async function SubscriptionsPage({
     limit,
   });
 
-  const table: Table = {
+  const table: Table<Subscription> = {
     columns: [
       {
         name: 'subscriptionNo',
@@ -86,7 +87,7 @@ export default async function SubscriptionsPage({
         title: t('fields.amount'),
         callback: (item) => {
           return (
-            <div className="text-primary">{`${item.amount / 100} ${
+            <div className="text-primary">{`${(item.amount === null ? 0 : item.amount) / 100} ${
               item.currency
             }`}</div>
           );

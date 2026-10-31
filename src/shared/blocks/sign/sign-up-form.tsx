@@ -7,6 +7,7 @@ import { useLocale, useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 
 import { authClient, signUp } from '@/core/auth/client';
+import { User } from '@/shared/models/user';
 import { defaultLocale } from '@/config/locale';
 import { Button } from '@/shared/components/ui/button';
 import { Input } from '@/shared/components/ui/input';
@@ -33,7 +34,8 @@ export function SignUpForm({
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const { configs, setIsShowSignModal, setUser, fetchUserInfo } = useAppContext();
+  const { configs, setIsShowSignModal, setUser, fetchUserInfo } =
+    useAppContext();
 
   const isGoogleAuthEnabled = configs.google_auth_enabled === 'true';
   const isGithubAuthEnabled = configs.github_auth_enabled === 'true';
@@ -74,7 +76,10 @@ export function SignUpForm({
       return;
     }
 
-    const windowObject = window as any;
+    const windowObject = window as Window & {
+      Affonso?: { signup: (email: string) => void };
+      promotekit?: { refer: (email: string, customerId?: string) => void };
+    };
 
     if (configs.affonso_enabled === 'true' && windowObject.Affonso) {
       windowObject.Affonso.signup(userEmail);
@@ -127,8 +132,8 @@ export function SignUpForm({
             }
 
             try {
-              const res: any = await authClient.getSession();
-              const freshUser = res?.data?.user ?? res?.user ?? null;
+              const res = await authClient.getSession();
+              const freshUser = (res.data?.user ?? null) as User | null;
               if (freshUser) {
                 setUser(freshUser);
                 fetchUserInfo();
@@ -138,14 +143,16 @@ export function SignUpForm({
             setLoading(false);
             router.refresh();
           },
-          onError: (e: any) => {
+          onError: (e) => {
             toast.error(e?.error?.message || 'sign up failed');
             setLoading(false);
           },
         }
       );
-    } catch (e: any) {
-      toast.error(e?.message || 'sign up failed');
+    } catch (e: unknown) {
+      toast.error(
+        e instanceof Error && e.message ? e.message : 'sign up failed'
+      );
       setLoading(false);
     }
   };
@@ -188,7 +195,7 @@ export function SignUpForm({
                 value={email}
               />
               {emailVerificationEnabled && (
-                <p className="text-amber-600 text-xs">
+                <p className="text-xs text-amber-600">
                   {t('email_verification_hint')}
                 </p>
               )}

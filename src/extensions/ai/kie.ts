@@ -60,7 +60,7 @@ export class KieProvider implements AIProvider {
     }
 
     // build request params
-    let payload: any = {
+    const payload: Record<string, unknown> = {
       prompt: params.prompt,
       model: params.model,
       callBackUrl: params.callbackUrl,
@@ -145,7 +145,11 @@ export class KieProvider implements AIProvider {
     }
 
     // build request params
-    let payload: any = {
+    const payload: {
+      model: string;
+      callBackUrl: string | undefined;
+      input: Record<string, unknown>;
+    } = {
       model: params.model,
       callBackUrl: params.callbackUrl,
       input: {
@@ -212,7 +216,11 @@ export class KieProvider implements AIProvider {
     }
 
     // build request params
-    let payload: any = {
+    const payload: {
+      model: string;
+      callBackUrl: string | undefined;
+      input: Record<string, unknown>;
+    } = {
       model: params.model,
       callBackUrl: params.callbackUrl,
       input: {
@@ -330,11 +338,17 @@ export class KieProvider implements AIProvider {
       const resultJson = JSON.parse(data.resultJson);
       const resultUrls = resultJson.resultUrls;
       if (Array.isArray(resultUrls)) {
-        images = resultUrls.map((image: any) => ({
-          id: '',
-          createTime: new Date(data.createTime),
-          imageUrl: image,
-        }));
+        images = resultUrls.flatMap((image: unknown) =>
+          typeof image === 'string'
+            ? [
+                {
+                  id: '',
+                  createTime: new Date(data.createTime),
+                  imageUrl: image,
+                },
+              ]
+            : []
+        );
       }
     }
 
@@ -420,11 +434,17 @@ export class KieProvider implements AIProvider {
       const resultJson = JSON.parse(data.resultJson);
       const resultUrls = resultJson.resultUrls;
       if (Array.isArray(resultUrls)) {
-        videos = resultUrls.map((video: any) => ({
-          id: '',
-          createTime: new Date(data.createTime),
-          videoUrl: video,
-        }));
+        videos = resultUrls.flatMap((video: unknown) =>
+          typeof video === 'string'
+            ? [
+                {
+                  id: '',
+                  createTime: new Date(data.createTime),
+                  videoUrl: video,
+                },
+              ]
+            : []
+        );
       }
     }
 
@@ -519,20 +539,31 @@ export class KieProvider implements AIProvider {
       throw new Error(`query failed`);
     }
 
-    const songs: AISong[] = data?.response?.sunoData?.map((song: any) => ({
-      id: song.id,
-      createTime: new Date(song.createTime),
-      audioUrl: song.audioUrl,
-      imageUrl: song.imageUrl,
-      duration: song.duration,
-      prompt: song.prompt,
-      title: song.title,
-      tags: song.tags,
-      style: song.style,
-      model: song.modelName,
-      artist: song.artist,
-      album: song.album,
-    }));
+    const songs: AISong[] = (data?.response?.sunoData ?? []).flatMap(
+      (song: unknown) => {
+        if (!song || typeof song !== 'object') return [];
+        const record = song as Record<string, unknown>;
+        const text = (key: string) =>
+          typeof record[key] === 'string' ? record[key] : undefined;
+        return [
+          {
+            id: text('id') ?? '',
+            createTime: new Date(text('createTime') ?? ''),
+            audioUrl: text('audioUrl'),
+            imageUrl: text('imageUrl'),
+            duration:
+              typeof record.duration === 'number' ? record.duration : undefined,
+            prompt: text('prompt'),
+            title: text('title'),
+            tags: text('tags'),
+            style: text('style'),
+            model: text('modelName'),
+            artist: text('artist'),
+            album: text('album'),
+          },
+        ];
+      }
+    );
 
     const taskStatus = this.mapStatus(data.status);
 

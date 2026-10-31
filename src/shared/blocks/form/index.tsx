@@ -1,6 +1,5 @@
 'use client';
 
-import { isArray } from 'util';
 import { useState } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Loader } from 'lucide-react';
@@ -20,11 +19,13 @@ import {
   FormLabel,
   FormMessage,
 } from '@/shared/components/ui/form';
-import { Label } from '@/shared/components/ui/label';
 import { Textarea } from '@/shared/components/ui/textarea';
 import {
   FormField as FormFieldType,
+  FormInputValues,
   FormSubmit,
+  FormValue,
+  FormValues,
 } from '@/shared/types/blocks/form';
 
 import { Checkbox } from './checkbox';
@@ -33,8 +34,9 @@ import { Markdown } from './markdown';
 import { Select } from './select';
 import { Switch } from './switch';
 import { UploadImage } from './upload-image';
+import { initialFieldValue, inputValue } from './value';
 
-function buildFieldSchema(field: FormFieldType) {
+function buildFieldSchema(field: FormFieldType): z.ZodType<FormValue> {
   if (field.type === 'switch') {
     return z.boolean();
   }
@@ -119,7 +121,7 @@ function buildFieldSchema(field: FormFieldType) {
   }
 
   if (field.type === 'checkbox') {
-    let schema = z.array(z.string());
+    const schema = z.array(z.string());
 
     return schema;
   }
@@ -171,7 +173,7 @@ function buildFieldSchema(field: FormFieldType) {
 }
 
 const generateFormSchema = (fields: FormFieldType[]) => {
-  const schemaFields: Record<string, any> = {};
+  const schemaFields: Record<string, z.ZodType<FormValue>> = {};
 
   fields.forEach((field) => {
     if (field.name) {
@@ -185,7 +187,7 @@ const generateFormSchema = (fields: FormFieldType[]) => {
 export function Form({
   title,
   description,
-  fields,
+  fields: suppliedFields,
   data,
   passby,
   submit,
@@ -193,24 +195,23 @@ export function Form({
   title?: string;
   description?: string;
   fields?: FormFieldType[];
-  data?: any;
-  passby?: any;
+  data?: unknown;
+  passby?: unknown;
   submit?: FormSubmit;
 }) {
-  if (!fields) {
-    fields = [];
-  }
+  const fields = suppliedFields || [];
 
   const [loading, setLoading] = useState(false);
 
   const router = useRouter();
   const FormSchema = generateFormSchema(fields);
-  const defaultValues: Record<string, any> = {};
+  const defaultValues: FormInputValues = {};
 
   fields.forEach((field) => {
     if (field.name) {
+      const initialValue = initialFieldValue(data, field.name);
       if (field.type === 'switch') {
-        const val = data?.[field.name] ?? field.value;
+        const val = initialValue ?? field.value;
         defaultValues[field.name] =
           val === true || val === 'true' || val === 1 || val === '1';
       } else if (
@@ -219,7 +220,7 @@ export function Form({
         field.metadata.max > 1
       ) {
         // Multiple image upload: default value is an array
-        const val = data?.[field.name] ?? field.value;
+        const val = initialValue ?? field.value;
         if (typeof val === 'string' && val) {
           // If it's a comma-separated string, convert to array
           defaultValues[field.name] = val.split(',').filter(Boolean);
@@ -229,10 +230,10 @@ export function Form({
           defaultValues[field.name] = [];
         }
       } else if (field.type === 'checkbox') {
-        const val = data?.[field.name] ?? field.value;
+        const val = initialValue ?? field.value;
         if (typeof val === 'string' && val) {
           try {
-            const parsed = JSON.parse(val);
+            const parsed: unknown = JSON.parse(val);
             defaultValues[field.name] = Array.isArray(parsed) ? parsed : [];
           } catch {
             defaultValues[field.name] = [];
@@ -244,52 +245,30 @@ export function Form({
         }
       } else if (field.type === 'number') {
         // Convert number to string for input fields (HTML inputs always return strings)
-        const val = data?.[field.name] ?? field.value;
+        const val = initialValue ?? field.value;
         defaultValues[field.name] =
           val !== null && val !== undefined ? String(val) : '';
       } else {
-        defaultValues[field.name] = data?.[field.name] || field.value || '';
+        defaultValues[field.name] = initialValue || field.value || '';
       }
     }
   });
 
-  const form = useForm<z.infer<typeof FormSchema>>({
+  const form = useForm<FormInputValues, unknown, FormValues>({
     resolver: zodResolver(FormSchema),
     defaultValues,
   });
 
-  async function onSubmit(data: z.infer<typeof FormSchema>) {
-    // console.log('=== Form Submit Start ===');
-    // console.log('[Form Submit] Raw form data:', data);
-
-    // Check upload_image field
-    fields?.forEach((field) => {
-      if (field.type === 'upload_image' && field.name) {
-        // console.log(`[Form Submit] Upload field "${field.name}":`, {
-        //   value: data[field.name],
-        //   type: typeof data[field.name],
-        //   isArray: Array.isArray(data[field.name]),
-        //   metadata: field.metadata,
-        // });
-      }
-    });
-
+  async function onSubmit(data: FormValues) {
     if (!submit?.handler) return;
 
     try {
       const formData = new FormData();
 
       Object.entries(data).forEach(([key, value]) => {
-        console.log('checkbox value', key, typeof value);
-        // If it's an array, join with commas
         if (Array.isArray(value)) {
-          // const joinedValue = value.join(",");
-          // console.log(`[Form Submit] ${key} (array):`, value, "→", joinedValue);
-          // formData.append(key, joinedValue);
           formData.append(key, JSON.stringify(value));
         } else {
-          // console.log(`[Form Submit] ${key}:`, value);
-          // Preserve boolean and other types' original values
           formData.append(key, String(value));
         }
       });
@@ -310,13 +289,14 @@ export function Form({
       }
 
       if (res.redirect_url) {
-        router.push(res.redirect_url as any);
+        router.push(res.redirect_url);
       }
 
       setLoading(false);
-    } catch (err: any) {
-      console.log('submit form error', err);
-      toast.error(err.message || 'submit form failed');
+    } catch (err: unknown) {
+      toast.error(
+        err instanceof Error && err.message ? err.message : 'submit form failed'
+      );
       setLoading(false);
     }
   }
@@ -347,7 +327,8 @@ export function Form({
                     <FormControl>
                       {item.type === 'textarea' ? (
                         <Textarea
-                          {...(field as any)}
+                          {...field}
+                          value={inputValue(field.value)}
                           placeholder={item.placeholder}
                           {...item.attributes}
                         />

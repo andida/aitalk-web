@@ -25,7 +25,9 @@ export async function middleware(request: NextRequest) {
 
   // Extract locale from pathname
   const locale = pathname.split('/')[1];
-  const isValidLocale = routing.locales.includes(locale as any);
+  const isValidLocale = routing.locales.some(
+    (supported) => supported === locale
+  );
   const pathWithoutLocale = stripLocale(pathname);
   const isAitalkPath =
     isAitalkProtectedPath(pathWithoutLocale) ||

@@ -32,7 +32,8 @@ const MONTH_HEADER_PATTERN = /^\d{4}-\d{2}(?:-01)?$/;
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
-  const file = args.file || args._[0];
+  const file =
+    (typeof args.file === 'string' ? args.file : undefined) || args._[0];
 
   if (!file) {
     throw new Error(
@@ -45,8 +46,12 @@ async function main() {
     );
   }
 
-  const source = parseSource(args.source);
-  const defaultCountry = normalizeCountry(args.country || 'global');
+  const source = parseSource(
+    typeof args.source === 'string' ? args.source : undefined
+  );
+  const defaultCountry = normalizeCountry(
+    typeof args.country === 'string' ? args.country : 'global'
+  );
   const cacheTtlDays = parsePositiveInt(args.cacheTtlDays, 30);
   const rows = parseCsv(readFileSync(resolve(file), 'utf8'));
   const imports = collectDomainImports({
@@ -314,7 +319,9 @@ function parseCsv(input: string) {
 }
 
 function parseArgs(args: string[]) {
-  const parsed: Record<string, any> & { _: string[] } = { _: [] };
+  const parsed: Record<string, string | boolean | string[] | undefined> & {
+    _: string[];
+  } = { _: [] };
 
   for (let i = 0; i < args.length; i += 1) {
     const arg = args[i];

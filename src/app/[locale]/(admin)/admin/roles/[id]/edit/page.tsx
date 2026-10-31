@@ -4,6 +4,8 @@ import { PERMISSIONS, requirePermission } from '@/core/rbac';
 import { Empty } from '@/shared/blocks/common';
 import { Header, Main, MainHeader } from '@/shared/blocks/dashboard';
 import { FormCard } from '@/shared/blocks/form';
+import { readFormContextString, readFormString } from '@/shared/lib/form-action';
+import { getUserInfo } from '@/shared/models/user';
 import { getRoleById, updateRole, UpdateRole } from '@/shared/services/rbac';
 import { Crumb } from '@/shared/types/blocks/common';
 import { Form } from '@/shared/types/blocks/form';
@@ -23,7 +25,7 @@ export default async function RoleEditPage({
     locale,
   });
 
-  const role = await getRoleById(id as string);
+  const role = await getRoleById(id);
   if (!role) {
     return <Empty message="Role not found" />;
   }
@@ -59,9 +61,9 @@ export default async function RoleEditPage({
       },
     ],
     passby: {
-      role: role,
+      role: { id },
     },
-    data: role,
+    data: { name: role.name, title: role.title, description: role.description },
     submit: {
       button: {
         title: t('edit.buttons.submit'),
@@ -69,21 +71,36 @@ export default async function RoleEditPage({
       handler: async (data, passby) => {
         'use server';
 
-        const { role } = passby;
-
-        if (!role) {
+        const operator = await getUserInfo();
+        if (!operator) {
           throw new Error('no auth');
         }
+        await requirePermission({
+          code: PERMISSIONS.ROLES_WRITE,
+          redirectUrl: '/admin/no-permission',
+          locale,
+        });
 
-        const title = data.get('title') as string;
-        const description = data.get('description') as string;
+        if (readFormContextString(passby, 'role', 'id') !== id) {
+          throw new Error('invalid role context');
+        }
+        const role = await getRoleById(id);
+        if (!role || role.id !== id) {
+          throw new Error('Role not found');
+        }
+
+        const title = readFormString(data, 'title');
+        const description = readFormString(data, 'description');
+        if (title === null) {
+          throw new Error('title is required');
+        }
 
         const newRole: UpdateRole = {
           title: title.trim(),
-          description: description as string,
+          description,
         };
 
-        const result = await updateRole(role.id as string, newRole);
+        const result = await updateRole(role.id, newRole);
 
         if (!result) {
           throw new Error('update role failed');

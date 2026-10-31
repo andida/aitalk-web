@@ -9,6 +9,7 @@ import { authClient, useSession } from '@/core/auth/client';
 import { useRouter } from '@/core/i18n/navigation';
 import { defaultLocale } from '@/config/locale';
 import { Button } from '@/shared/components/ui/button';
+import { errorMessage } from '@/shared/lib/error-message';
 import {
   Card,
   CardContent,
@@ -79,7 +80,14 @@ export function VerifyEmailPage({
   const locale = useLocale();
   const { data: session, isPending } = useSession();
   const [loading, setLoading] = useState(false);
-  const [cooldownSeconds, setCooldownSeconds] = useState(0);
+  const [cooldownEmail, setCooldownEmail] = useState(email);
+  const [cooldownSeconds, setCooldownSeconds] = useState(() =>
+    getCooldownRemainingSeconds(email)
+  );
+  if (email !== cooldownEmail) {
+    setCooldownEmail(email);
+    setCooldownSeconds(getCooldownRemainingSeconds(email));
+  }
   const lastSessionCheckAtRef = useRef(0);
 
   const nextUrl = useMemo(() => {
@@ -104,15 +112,16 @@ export function VerifyEmailPage({
     window.location.assign(`${base}/sign-in?${query.toString()}`);
   };
 
-  // Initialize & tick cooldown
   useEffect(() => {
-    setCooldownSeconds(getCooldownRemainingSeconds(email));
-
-    const timer = window.setInterval(() => {
+    const update = () =>
       setCooldownSeconds(getCooldownRemainingSeconds(email));
-    }, 1000);
+    const immediate = window.setTimeout(update, 0);
+    const timer = window.setInterval(update, 1000);
 
-    return () => window.clearInterval(timer);
+    return () => {
+      window.clearTimeout(immediate);
+      window.clearInterval(timer);
+    };
   }, [email]);
 
   const hardNavigateToNextUrl = () => {
@@ -206,7 +215,9 @@ export function VerifyEmailPage({
       if (getCooldownRemainingSeconds(email) === 0) {
         markSentNow(email);
       }
-      setCooldownSeconds(getCooldownRemainingSeconds(email));
+      const timer = window.setTimeout(() => {
+        setCooldownSeconds(getCooldownRemainingSeconds(email));
+      }, 0);
 
       // Remove `sent=1` from the URL to avoid re-triggering on locale switch/refresh.
       if (typeof window !== 'undefined') {
@@ -218,8 +229,9 @@ export function VerifyEmailPage({
           // ignore
         }
       }
+      return () => window.clearTimeout(timer);
     }
-  }, [sent, t, email]);
+  }, [sent, email]);
 
   const handleResend = async () => {
     if (!email) {
@@ -247,8 +259,8 @@ export function VerifyEmailPage({
       }
       markSentNow(email);
       setCooldownSeconds(getCooldownRemainingSeconds(email));
-    } catch (e: any) {
-      toast.error(e?.message || 'send verification email failed');
+    } catch (e: unknown) {
+      toast.error(errorMessage(e, 'send verification email failed'));
     } finally {
       setLoading(false);
     }

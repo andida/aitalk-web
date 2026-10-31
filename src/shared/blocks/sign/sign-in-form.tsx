@@ -6,6 +6,7 @@ import { useLocale, useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 
 import { authClient, signIn } from '@/core/auth/client';
+import { User } from '@/shared/models/user';
 import { Link, useRouter } from '@/core/i18n/navigation';
 import { defaultLocale } from '@/config/locale';
 import { Button } from '@/shared/components/ui/button';
@@ -31,7 +32,8 @@ export function SignInForm({
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const { configs, setIsShowSignModal, setUser, fetchUserInfo } = useAppContext();
+  const { configs, setIsShowSignModal, setUser, fetchUserInfo } =
+    useAppContext();
 
   const isGoogleAuthEnabled = configs.google_auth_enabled === 'true';
   const isGithubAuthEnabled = configs.github_auth_enabled === 'true';
@@ -88,8 +90,8 @@ export function SignInForm({
           },
           onSuccess: async () => {
             try {
-              const res: any = await authClient.getSession();
-              const freshUser = res?.data?.user ?? res?.user ?? null;
+              const res = await authClient.getSession();
+              const freshUser = (res.data?.user ?? null) as User | null;
               if (freshUser) {
                 setUser(freshUser);
                 fetchUserInfo();
@@ -99,7 +101,7 @@ export function SignInForm({
             setLoading(false);
             router.refresh();
           },
-          onError: (e: any) => {
+          onError: (e) => {
             const status = e?.error?.status;
             if (status === 403) {
               const normalizedCallbackUrl = stripLocalePrefix(callbackUrl);
@@ -123,8 +125,10 @@ export function SignInForm({
           },
         }
       );
-    } catch (e: any) {
-      toast.error(e?.message || 'sign in failed');
+    } catch (e: unknown) {
+      toast.error(
+        e instanceof Error && e.message ? e.message : 'sign in failed'
+      );
       setLoading(false);
     }
   };

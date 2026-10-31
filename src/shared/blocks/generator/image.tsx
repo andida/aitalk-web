@@ -38,6 +38,11 @@ import {
 import { Tabs, TabsList, TabsTrigger } from '@/shared/components/ui/tabs';
 import { Textarea } from '@/shared/components/ui/textarea';
 import { useAppContext } from '@/shared/contexts/app';
+import { useHydrated } from '@/shared/hooks/use-hydrated';
+import {
+  extractMediaUrls,
+  parseMediaTaskResult,
+} from '@/shared/lib/media-task-result';
 import { cn } from '@/shared/lib/utils';
 
 interface ImageGeneratorProps {
@@ -148,60 +153,6 @@ const PROVIDER_OPTIONS = [
   },
 ];
 
-function parseTaskResult(taskResult: string | null): any {
-  if (!taskResult) {
-    return null;
-  }
-
-  try {
-    return JSON.parse(taskResult);
-  } catch (error) {
-    console.warn('Failed to parse taskResult:', error);
-    return null;
-  }
-}
-
-function extractImageUrls(result: any): string[] {
-  if (!result) {
-    return [];
-  }
-
-  const output = result.output ?? result.images ?? result.data;
-
-  if (!output) {
-    return [];
-  }
-
-  if (typeof output === 'string') {
-    return [output];
-  }
-
-  if (Array.isArray(output)) {
-    return output
-      .flatMap((item) => {
-        if (!item) return [];
-        if (typeof item === 'string') return [item];
-        if (typeof item === 'object') {
-          const candidate =
-            item.url ?? item.uri ?? item.image ?? item.src ?? item.imageUrl;
-          return typeof candidate === 'string' ? [candidate] : [];
-        }
-        return [];
-      })
-      .filter(Boolean);
-  }
-
-  if (typeof output === 'object') {
-    const candidate =
-      output.url ?? output.uri ?? output.image ?? output.src ?? output.imageUrl;
-    if (typeof candidate === 'string') {
-      return [candidate];
-    }
-  }
-
-  return [];
-}
-
 export function ImageGenerator({
   allowMultipleImages = true,
   maxImages = 9,
@@ -233,14 +184,10 @@ export function ImageGenerator({
   const [downloadingImageId, setDownloadingImageId] = useState<string | null>(
     null
   );
-  const [isMounted, setIsMounted] = useState(false);
+  const isMounted = useHydrated();
 
   const { user, isCheckSign, setIsShowSignModal, fetchUserCredits } =
     useAppContext();
-
-  useEffect(() => {
-    setIsMounted(true);
-  }, []);
 
   const promptLength = prompt.trim().length;
   const remainingCredits = user?.credits?.remainingCredits ?? 0;
@@ -363,8 +310,8 @@ export function ImageGenerator({
         const currentStatus = task.status as AITaskStatus;
         setTaskStatus(currentStatus);
 
-        const parsedResult = parseTaskResult(task.taskInfo);
-        const imageUrls = extractImageUrls(parsedResult);
+        const parsedResult = parseMediaTaskResult(task.taskInfo);
+        const imageUrls = extractMediaUrls(parsedResult, 'image');
 
         if (currentStatus === AITaskStatus.PENDING) {
           setProgress((prev) => Math.max(prev, 20));
@@ -412,7 +359,10 @@ export function ImageGenerator({
 
         if (currentStatus === AITaskStatus.FAILED) {
           const errorMessage =
-            parsedResult?.errorMessage || 'Generate image failed';
+            typeof parsedResult?.errorMessage === 'string' &&
+            parsedResult.errorMessage
+              ? parsedResult.errorMessage
+              : 'Generate image failed';
           toast.error(errorMessage);
           resetTaskState();
 
@@ -423,9 +373,11 @@ export function ImageGenerator({
 
         setProgress((prev) => Math.min(prev + 5, 95));
         return false;
-      } catch (error: any) {
+      } catch (error: unknown) {
         console.error('Error polling image task:', error);
-        toast.error(`Query task failed: ${error.message}`);
+        toast.error(
+          `Query task failed: ${error instanceof Error ? error.message : 'Unknown error'}`
+        );
         resetTaskState();
 
         fetchUserCredits();
@@ -506,7 +458,7 @@ export function ImageGenerator({
     setGenerationStartTime(Date.now());
 
     try {
-      const options: any = {};
+      const options: { image_input?: string[] } = {};
 
       if (!isTextToImageMode) {
         options.image_input = referenceImageUrls;
@@ -542,8 +494,8 @@ export function ImageGenerator({
       }
 
       if (data.status === AITaskStatus.SUCCESS && data.taskInfo) {
-        const parsedResult = parseTaskResult(data.taskInfo);
-        const imageUrls = extractImageUrls(parsedResult);
+        const parsedResult = parseMediaTaskResult(data.taskInfo);
+        const imageUrls = extractMediaUrls(parsedResult, 'image');
 
         if (imageUrls.length > 0) {
           setGeneratedImages(
@@ -567,9 +519,11 @@ export function ImageGenerator({
       setProgress(25);
 
       await fetchUserCredits();
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Failed to generate image:', error);
-      toast.error(`Failed to generate image: ${error.message}`);
+      toast.error(
+        `Failed to generate image: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
       resetTaskState();
     }
   };

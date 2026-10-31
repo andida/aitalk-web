@@ -24,7 +24,7 @@ export function FeaturesAccordion({
 }) {
   const [activeItem, setActiveItem] = useState<string>('item-1');
 
-  const images: any = {};
+  const images: Record<string, { image: string; alt: string }> = {};
   section.items?.forEach((item, idx) => {
     images[`item-${idx + 1}`] = {
       image: item.image?.src ?? '',

@@ -43,7 +43,7 @@ export default async function PaymentsPage({
     limit,
   });
 
-  const table: Table = {
+  const table: Table<Order> = {
     title: t('list.title'),
     columns: [
       { name: 'orderNo', title: t('fields.order_no'), type: 'copy' },
@@ -77,7 +77,7 @@ export default async function PaymentsPage({
           }
 
           return (
-            <div className="text-primary">{`${prefix}${item.amount / 100}`}</div>
+            <div className="text-primary">{`${prefix}${(item.amount === null ? 0 : item.amount) / 100}`}</div>
           );
         },
       },
@@ -98,7 +98,7 @@ export default async function PaymentsPage({
           }
 
           return (
-            <div className="text-primary">{`${prefix}${item.paymentAmount / 100}`}</div>
+            <div className="text-primary">{`${prefix}${(item.paymentAmount === null ? 0 : item.paymentAmount) / 100}`}</div>
           );
         },
       },
@@ -119,7 +119,7 @@ export default async function PaymentsPage({
           }
 
           return (
-            <div className="text-primary">{`${prefix}${item.discountAmount / 100}`}</div>
+            <div className="text-primary">{`${prefix}${(item.discountAmount === null ? 0 : item.discountAmount) / 100}`}</div>
           );
         },
       },
@@ -129,7 +129,6 @@ export default async function PaymentsPage({
         type: 'time',
       },
       {
-        name: 'actions',
         type: 'dropdown',
         callback: (item: Order) => {
           if (item.invoiceUrl) {

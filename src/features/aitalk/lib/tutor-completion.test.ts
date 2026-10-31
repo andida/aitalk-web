@@ -1,8 +1,37 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import type { ConversationMode, UserLessonProgress } from '../types';
-import { resolveTutorMode, saveTutorCompletion } from './tutor-completion';
+import type { ConversationMode, TutorPracticeReport } from '../types';
+import { chooseOwnedActivePlanId } from './course-plan';
+import {
+  isTutorPracticeReport,
+  readTutorCompletionScore,
+  resolveTutorMode,
+  saveTutorCompletion,
+} from './tutor-completion';
+
+test('owned plan fallback ignores untrusted IDs and matches language and level', () => {
+  const plans = [
+    { id: 33, language: 'English', level: '5' },
+    { id: 22, language: ' English ', level: 'L1' },
+    { id: 11, language: 'Spanish', level: '1' },
+  ];
+  assert.equal(chooseOwnedActivePlanId(plans, 22, 'english', 1), 22);
+  assert.equal(chooseOwnedActivePlanId(plans, 999, 'ENGLISH', 'L1'), 22);
+  assert.equal(chooseOwnedActivePlanId(plans, 33, 'English', 1), 22);
+  assert.equal(chooseOwnedActivePlanId(plans, undefined, 'English', 5), 33);
+  assert.equal(chooseOwnedActivePlanId(plans, undefined, 'Spanish', 1), 11);
+  assert.equal(chooseOwnedActivePlanId(plans, undefined, 'Japanese', 1), null);
+  assert.equal(
+    chooseOwnedActivePlanId(
+      [{ id: 44, language: 'English', level: null }],
+      undefined,
+      'English',
+      1
+    ),
+    null
+  );
+});
 
 test('persisted completion overrides client attempts to select guided mode', () => {
   assert.equal(resolveTutorMode('guided', true), 'review');
@@ -24,20 +53,16 @@ const input = {
 };
 function fixture() {
   const calls: string[] = [];
-  let progress: UserLessonProgress | null = null;
+  let saved: TutorPracticeReport | null = null;
   return {
     calls,
     source: {
-      getProgress: async () => {
-        calls.push('read');
-        return progress;
-      },
-      saveReport: async () => {
-        calls.push('report');
-      },
-      complete: async () => {
-        calls.push('complete');
-        progress = { user_id: 'test', lesson_id: 1, status: 'completed' };
+      commit: async (
+        report: TutorPracticeReport
+      ): Promise<TutorPracticeReport | null> => {
+        calls.push('commit');
+        saved ??= report;
+        return saved;
       },
     },
   };
@@ -86,36 +111,75 @@ test('missing and malformed scores never fabricate a passing mark', async () => 
     assert.deepEqual(calls, []);
   }
 });
-test('successful server completion returns the saved report and skips sequential duplicates', async () => {
+test('out-of-range and fractional tutor scores never reach the commit', async () => {
+  for (const score of [-1, 101, 2.5, '2.5']) {
+    const { calls, source } = fixture();
+    assert.equal(
+      await saveTutorCompletion(
+        { ...input, raw: { ...passed, score } },
+        source
+      ),
+      null
+    );
+    assert.deepEqual(calls, []);
+  }
+  assert.equal(readTutorCompletionScore({ score: 0 }), 0);
+  assert.equal(readTutorCompletionScore({ score: '100' }), 100);
+});
+test('trusted report validation rejects malformed persisted shapes', () => {
+  const valid = {
+    score: 91,
+    criteria_status: [
+      { label: 'Introduce yourself', status: 'met', evidence: null },
+    ],
+    target_chunks_used: [],
+    feedback_summary: 'Good work',
+    weak_points: [],
+    review_items: [],
+    improved_sentence: null,
+  };
+  assert.equal(isTutorPracticeReport(valid), true);
+  assert.equal(
+    isTutorPracticeReport({ ...valid, criteria_status: 'not-an-array' }),
+    false
+  );
+  assert.equal(isTutorPracticeReport({ ...valid, weak_points: [1] }), false);
+  assert.equal(
+    isTutorPracticeReport({ ...valid, feedback_summary: null }),
+    false
+  );
+  assert.equal(
+    isTutorPracticeReport({
+      ...valid,
+      improved_sentence: { improved: '   ' },
+    }),
+    false
+  );
+  assert.equal(isTutorPracticeReport({ ...valid, score: 91.5 }), false);
+});
+test('completion uses one commit and returns the canonical saved report on retry', async () => {
   const { calls, source } = fixture();
   const report = await saveTutorCompletion(input, source);
   assert.equal(report?.score, 91);
   assert.equal(report?.criteria_status[0].label, 'Introduce yourself');
-  assert.deepEqual(calls, ['read', 'report', 'complete']);
-  assert.equal(await saveTutorCompletion(input, source), null);
-  assert.deepEqual(calls, ['read', 'report', 'complete', 'read']);
+  assert.deepEqual(calls, ['commit']);
+  assert.equal(await saveTutorCompletion(input, source), report);
+  assert.deepEqual(calls, ['commit', 'commit']);
 });
-test('progress read failure does not save a report or mark complete', async () => {
+test('legacy completed lessons can return no new report', async () => {
   const { calls, source } = fixture();
-  source.getProgress = async () => {
-    throw new Error('read failed');
-  };
-  await assert.rejects(saveTutorCompletion(input, source), /read failed/);
+  source.commit = async () => null;
+  assert.equal(await saveTutorCompletion(input, source), null);
   assert.deepEqual(calls, []);
 });
-test('report save failure does not mark complete', async () => {
+test('atomic commit failure propagates without partial-write fallback', async () => {
   const { calls, source } = fixture();
-  source.saveReport = async () => {
-    throw new Error('report failed');
+  source.commit = async () => {
+    throw new Error('transaction failed');
   };
-  await assert.rejects(saveTutorCompletion(input, source), /report failed/);
-  assert.deepEqual(calls, ['read']);
-});
-test('completion save failure is reported instead of returning false success', async () => {
-  const { calls, source } = fixture();
-  source.complete = async () => {
-    throw new Error('completion failed');
-  };
-  await assert.rejects(saveTutorCompletion(input, source), /completion failed/);
-  assert.deepEqual(calls, ['read', 'report']);
+  await assert.rejects(
+    saveTutorCompletion(input, source),
+    /transaction failed/
+  );
+  assert.deepEqual(calls, []);
 });

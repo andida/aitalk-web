@@ -3,6 +3,7 @@ import { getTranslations } from 'next-intl/server';
 
 import { Empty } from '@/shared/blocks/common';
 import { FormCard } from '@/shared/blocks/form';
+import { readFormContextString } from '@/shared/lib/form-action';
 import {
   findSubscriptionBySubscriptionNo,
   SubscriptionStatus,
@@ -21,7 +22,7 @@ export default async function CancelBillingPage({
   searchParams: Promise<{ subscription_no: string }>;
 }) {
   const t = await getTranslations('settings.billing.cancel');
-  const { locale } = await params;
+  await params;
   const { subscription_no } = await searchParams;
 
   if (!subscription_no) {
@@ -69,15 +70,34 @@ export default async function CancelBillingPage({
     },
   ];
 
-  const handleCancelSubscription = async (data: FormData, passby: any) => {
+  const handleCancelSubscription = async (data: FormData, passby?: unknown) => {
     'use server';
 
-    const { subscription, user } = passby;
+    const user = await getUserInfo();
     if (!user) {
       throw new Error('no auth');
     }
+    if (readFormContextString(passby, 'user', 'id') !== user.id) {
+      throw new Error('no permission');
+    }
 
-    if (!subscription || !subscription.subscriptionId) {
+    const subscriptionNo = readFormContextString(
+      passby,
+      'subscription',
+      'subscriptionNo'
+    );
+    if (!subscriptionNo) {
+      throw new Error('invalid subscription');
+    }
+    if (subscriptionNo !== subscription_no) {
+      throw new Error('no permission');
+    }
+    const subscription = await findSubscriptionBySubscriptionNo(subscriptionNo);
+    if (
+      !subscription ||
+      !subscription.subscriptionId ||
+      !subscription.paymentProvider
+    ) {
       throw new Error('invalid subscription');
     }
 
@@ -148,10 +168,10 @@ export default async function CancelBillingPage({
         attributes: { disabled: true },
       },
     ],
-    data: subscription,
+    data: { subscriptionNo: subscription.subscriptionNo },
     passby: {
-      subscription: subscription,
-      user: user,
+      subscription: { subscriptionNo: subscription.subscriptionNo },
+      user: { id: user.id },
     },
     submit: {
       handler: handleCancelSubscription,

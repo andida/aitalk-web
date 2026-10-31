@@ -150,8 +150,10 @@ export async function POST(req: Request) {
         }
       },
     });
-  } catch (e: any) {
+  } catch (e: unknown) {
     console.log('chat failed:', e);
-    return new Response(e.message, { status: 500 });
+    return new Response(e instanceof Error ? e.message : 'chat failed', {
+      status: 500,
+    });
   }
 }

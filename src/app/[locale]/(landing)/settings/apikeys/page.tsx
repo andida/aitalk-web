@@ -40,7 +40,7 @@ export default async function ApiKeysPage({
     limit,
   });
 
-  const table: Table = {
+  const table: Table<Apikey> = {
     title: t('list.title'),
     columns: [
       {
@@ -54,7 +54,6 @@ export default async function ApiKeysPage({
         type: 'time',
       },
       {
-        name: 'action',
         title: t('fields.action'),
         type: 'dropdown',
         callback: (item: Apikey) => {

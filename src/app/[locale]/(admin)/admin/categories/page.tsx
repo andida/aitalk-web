@@ -49,7 +49,7 @@ export default async function CategoriesPage({
     limit,
   });
 
-  const table: Table = {
+  const table: Table<Taxonomy> = {
     columns: [
       {
         name: 'slug',
@@ -67,7 +67,6 @@ export default async function CategoriesPage({
       { name: 'createdAt', title: t('fields.created_at'), type: 'time' },
       { name: 'updatedAt', title: t('fields.updated_at'), type: 'time' },
       {
-        name: 'action',
         title: '',
         type: 'dropdown',
         callback: (item: Taxonomy) => {

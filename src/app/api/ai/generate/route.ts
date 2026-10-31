@@ -9,8 +9,15 @@ import { getAIService } from '@/shared/services/ai';
 
 export async function POST(request: Request) {
   try {
-    let { provider, mediaType, model, prompt, options, scene } =
-      await request.json();
+    const {
+      provider,
+      mediaType,
+      model,
+      prompt,
+      options,
+      scene: requestedScene,
+    } = await request.json();
+    let scene = requestedScene;
 
     if (!provider || !mediaType || !model) {
       throw new Error('invalid params');
@@ -78,7 +85,7 @@ export async function POST(request: Request) {
 
     const callbackUrl = `${envConfigs.app_url}/api/ai/notify/${provider}`;
 
-    const params: any = {
+    const params = {
       mediaType,
       model,
       prompt,
@@ -113,8 +120,8 @@ export async function POST(request: Request) {
     await createAITask(newAITask);
 
     return respData(newAITask);
-  } catch (e: any) {
+  } catch (e: unknown) {
     console.log('generate failed', e);
-    return respErr(e.message);
+    return respErr(e instanceof Error ? e.message : 'generate failed');
   }
 }

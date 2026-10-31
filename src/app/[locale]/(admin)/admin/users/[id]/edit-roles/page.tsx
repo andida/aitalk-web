@@ -1,14 +1,14 @@
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 
-import {
-  PERMISSIONS,
-  requireAllPermissions,
-  requirePermission,
-} from '@/core/rbac';
+import { PERMISSIONS, requireAllPermissions } from '@/core/rbac';
 import { Empty } from '@/shared/blocks/common';
 import { Header, Main, MainHeader } from '@/shared/blocks/dashboard';
 import { FormCard } from '@/shared/blocks/form';
-import { findUserById } from '@/shared/models/user';
+import {
+  readFormContextString,
+  readFormStringArray,
+} from '@/shared/lib/form-action';
+import { findUserById, getUserInfo } from '@/shared/models/user';
 import {
   assignRolesToUser,
   getRoles,
@@ -52,7 +52,7 @@ export default async function UserEditRolesPage({
     value: role.id,
   }));
 
-  const userRoles = await getUserRoles(user.id as string);
+  const userRoles = await getUserRoles(id);
   const userRoleIds = userRoles.map((role) => role.id);
 
   const form: Form = {
@@ -73,10 +73,10 @@ export default async function UserEditRolesPage({
       },
     ],
     passby: {
-      user,
+      user: { id },
     },
     data: {
-      ...user,
+      email: user.email,
       roles: userRoleIds,
     },
     submit: {
@@ -86,22 +86,39 @@ export default async function UserEditRolesPage({
       handler: async (data, passby) => {
         'use server';
 
-        const { user } = passby;
-
-        if (!user) {
+        const operator = await getUserInfo();
+        if (!operator) {
           throw new Error('no auth');
         }
+        await requireAllPermissions({
+          codes: [PERMISSIONS.USERS_WRITE, PERMISSIONS.ROLES_WRITE],
+          redirectUrl: '/admin/no-permission',
+          locale,
+        });
 
-        let roles = data.get('roles') as unknown as string[];
-        if (typeof roles === 'string') {
-          try {
-            roles = JSON.parse(roles);
-          } catch (error) {
-            throw new Error('invalid roles');
-          }
+        if (readFormContextString(passby, 'user', 'id') !== id) {
+          throw new Error('invalid user context');
+        }
+        const user = await findUserById(id);
+        if (!user || user.id !== id) {
+          throw new Error('User not found');
         }
 
-        await assignRolesToUser(user.id as string, roles);
+        const roles = readFormStringArray(data, 'roles');
+        const [availableRoles, assignedRoles] = await Promise.all([
+          getRoles(),
+          getUserRoles(user.id),
+        ]);
+        // Keep current historical assignments even when absent from the picker.
+        const knownIds = new Set([
+          ...availableRoles.map((role) => role.id),
+          ...assignedRoles.map((role) => role.id),
+        ]);
+        if (roles.some((roleId) => !knownIds.has(roleId))) {
+          throw new Error('invalid roles');
+        }
+
+        await assignRolesToUser(user.id, roles);
 
         return {
           status: 'success',

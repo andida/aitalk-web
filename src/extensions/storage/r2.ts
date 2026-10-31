@@ -99,10 +99,9 @@ export class R2Provider implements StorageProvider {
         };
       }
 
-      const bodyArray =
-        options.body instanceof Buffer
-          ? new Uint8Array(options.body)
-          : options.body;
+      // Copy only the provided bytes into an ArrayBuffer-backed view accepted
+      // by the Fetch API, including when the input is a sliced Buffer.
+      const bodyArray = Uint8Array.from(options.body);
 
       const uploadPath = this.getUploadPath();
 
@@ -128,7 +127,7 @@ export class R2Provider implements StorageProvider {
       const request = new Request(url, {
         method: 'PUT',
         headers,
-        body: bodyArray as any,
+        body: bodyArray,
       });
 
       const response = await client.fetch(request);

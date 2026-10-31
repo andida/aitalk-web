@@ -1,32 +1,41 @@
 'use client';
 
-import { ReactNode } from 'react';
+import type { ReactNode } from 'react';
+import copy from 'copy-to-clipboard';
 import { CopyIcon } from 'lucide-react';
-import { CopyToClipboard } from 'react-copy-to-clipboard';
 import { toast } from 'sonner';
+
+import type { CopyMetadata } from '@/shared/types/blocks/table';
+
+import { ownValue } from './value';
 
 export function Copy({
   value,
-  placeholder,
   metadata,
   className,
   children,
 }: {
   value: string;
   placeholder?: string;
-  metadata?: Record<string, any>;
+  metadata?: CopyMetadata;
   className?: string;
   children: ReactNode;
 }) {
   return (
-    <CopyToClipboard
-      text={value}
-      onCopy={() => toast.success(metadata?.message ?? 'Copied')}
+    <button
+      type="button"
+      className={`flex cursor-pointer items-center gap-2 ${className || ''}`}
+      onClick={() => {
+        const message = ownValue(metadata, 'message');
+        if (copy(value)) {
+          toast.success(typeof message === 'string' ? message : 'Copied');
+        } else {
+          toast.error('Could not copy');
+        }
+      }}
     >
-      <div className={`flex cursor-pointer items-center gap-2 ${className}`}>
-        {children}
-        <CopyIcon className="h-3 w-3" />
-      </div>
-    </CopyToClipboard>
+      {children}
+      <CopyIcon className="h-3 w-3" />
+    </button>
   );
 }

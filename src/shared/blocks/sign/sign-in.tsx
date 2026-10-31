@@ -19,6 +19,7 @@ import {
 } from '@/shared/components/ui/card';
 import { Input } from '@/shared/components/ui/input';
 import { Label } from '@/shared/components/ui/label';
+import { errorMessage } from '@/shared/lib/error-message';
 
 import { SocialProviders } from './social-providers';
 
@@ -95,7 +96,7 @@ export function SignIn({
           onSuccess: (ctx) => {
             // Keep loading=true until navigation completes.
           },
-          onError: (e: any) => {
+          onError: (e) => {
             const status = e?.error?.status;
             if (status === 403) {
               const normalizedCallbackUrl = stripLocalePrefix(callbackUrl);
@@ -123,8 +124,8 @@ export function SignIn({
           },
         }
       );
-    } catch (e: any) {
-      toast.error(e?.message || 'sign in failed');
+    } catch (e: unknown) {
+      toast.error(errorMessage(e, 'sign in failed'));
       setLoading(false);
     }
   };

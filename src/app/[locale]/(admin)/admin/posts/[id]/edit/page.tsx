@@ -4,6 +4,7 @@ import { PERMISSIONS, requirePermission } from '@/core/rbac';
 import { Empty } from '@/shared/blocks/common';
 import { Header, Main, MainHeader } from '@/shared/blocks/dashboard';
 import { FormCard } from '@/shared/blocks/form';
+import { readFormContextString, readFormString } from '@/shared/lib/form-action';
 import {
   findPost,
   PostStatus,
@@ -111,9 +112,18 @@ export default async function PostEditPage({
     ],
     passby: {
       type: 'post',
-      post: post,
+      post: { id: post.id },
     },
-    data: post,
+    data: {
+      slug: post.slug,
+      title: post.title,
+      description: post.description,
+      categories: post.categories,
+      image: post.image,
+      authorName: post.authorName,
+      authorImage: post.authorImage,
+      content: post.content,
+    },
     submit: {
       button: {
         title: t('edit.buttons.submit'),
@@ -126,23 +136,39 @@ export default async function PostEditPage({
           throw new Error('no auth');
         }
 
-        const { post } = passby;
+        await requirePermission({
+          code: PERMISSIONS.POSTS_WRITE,
+          redirectUrl: '/admin/no-permission',
+          locale,
+        });
 
-        if (!user || !post) {
+        if (readFormContextString(passby, 'post', 'id') !== id) {
+          throw new Error('access denied');
+        }
+        const post = await findPost({ id });
+        if (!post || post.id !== id) {
           throw new Error('no auth');
         }
 
-        const slug = data.get('slug') as string;
-        const title = data.get('title') as string;
-        const description = data.get('description') as string;
-        const content = data.get('content') as string;
-        const categories = data.get('categories') as string;
-        const authorName = data.get('authorName') as string;
-        const authorImage = data.get('authorImage') as string;
-        const image = data.get('image') as string;
+        const slug = readFormString(data, 'slug');
+        const title = readFormString(data, 'title');
+        const description = readFormString(data, 'description');
+        const content = readFormString(data, 'content');
+        const categories = readFormString(data, 'categories');
+        const authorName = readFormString(data, 'authorName');
+        const authorImage = readFormString(data, 'authorImage');
+        const image = readFormString(data, 'image');
 
         if (!slug?.trim() || !title?.trim()) {
           throw new Error('slug and title are required');
+        }
+        if (
+          description === null ||
+          content === null ||
+          categories === null ||
+          authorName === null
+        ) {
+          throw new Error('invalid post fields');
         }
 
         const newPost: UpdatePost = {
@@ -151,12 +177,12 @@ export default async function PostEditPage({
           type: PostType.ARTICLE,
           title: title.trim(),
           description: description.trim(),
-          image: image as string,
+          image,
           content: content.trim(),
           categories: categories.trim(),
           tags: '',
           authorName: authorName.trim(),
-          authorImage: authorImage as string,
+          authorImage,
           status: PostStatus.PUBLISHED,
         };
 

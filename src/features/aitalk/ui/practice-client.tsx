@@ -1,6 +1,13 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  useEffect,
+  useEffectEvent,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react';
 import { askTutorAction } from '@/features/aitalk/actions';
 import { SUPABASE_ANON_KEY, SUPABASE_URL } from '@/features/aitalk/constants';
 import {
@@ -115,6 +122,38 @@ function saveStoredMessages(key: string, messages: PracticeMessage[]) {
     window.localStorage.setItem(key, JSON.stringify(messages));
   } catch {
     // Storage can be unavailable in private browsing; practice still works.
+  }
+}
+
+type LegacyHistory =
+  | { status: 'empty' | 'invalid' | 'unavailable' }
+  | { status: 'ready'; messages: PracticeMessage[]; skipped: boolean };
+
+const LEGACY_HISTORY_PAGE_SIZE = 20;
+
+function readLegacyHistory(key: string): LegacyHistory {
+  let raw: string | null;
+  try {
+    raw = window.localStorage.getItem(key);
+  } catch {
+    return { status: 'unavailable' };
+  }
+  if (raw === null) return { status: 'empty' };
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return { status: 'invalid' };
+    if (parsed.length === 0) return { status: 'empty' };
+    const messages = parsed
+      .filter(isPracticeMessage)
+      .map(({ role, content }) => ({ role, content }));
+    if (messages.length === 0) return { status: 'invalid' };
+    return {
+      status: 'ready',
+      messages,
+      skipped: messages.length !== parsed.length,
+    };
+  } catch {
+    return { status: 'invalid' };
   }
 }
 
@@ -255,29 +294,7 @@ function buildSpeechTranscriptFormData({
   return formData;
 }
 
-export function PracticeClient({
-  conversationTopic,
-  learnLanguage,
-  learnerLevel,
-  lesson,
-  locale,
-  nativeLanguage,
-  nextLessonId,
-  planId,
-  practiceMode,
-  progressStatus,
-  returnHref,
-  returnLabel,
-  requiredTurns,
-  speechLocale,
-  speechStyle,
-  successCriteria,
-  teacherAvatarUrl,
-  teacherDescription,
-  teacherName,
-  userId,
-  voiceName,
-}: {
+type PracticeClientProps = {
   conversationTopic?: FreeTalkTopic | null;
   learnLanguage: string;
   learnerLevel: number;
@@ -299,38 +316,111 @@ export function PracticeClient({
   teacherName?: string;
   userId?: string;
   voiceName?: string;
+};
+
+// The server and its first hydration pass render the same noninteractive shell.
+// Mount the session only afterwards: its first storage read must precede saving.
+const subscribeToClient = () => () => {};
+const getClientSnapshot = () => true;
+const getServerSnapshot = () => false;
+
+export function PracticeClient(props: PracticeClientProps) {
+  const clientReady = useSyncExternalStore(
+    subscribeToClient,
+    getClientSnapshot,
+    getServerSnapshot
+  );
+  // Input preference belongs to the page, not to an individual conversation.
+  const [preferredInputMode, setPreferredInputMode] =
+    useState<MobileInputMode>('voice');
+  if (!clientReady) {
+    return (
+      <div role="status" className="mx-auto max-w-5xl px-4 py-10">
+        {/^zh(?:-|$)/i.test(props.locale)
+          ? '正在加载对话...'
+          : 'Loading conversation...'}
+      </div>
+    );
+  }
+
+  const scope = JSON.stringify([
+    props.userId ?? null,
+    props.practiceMode,
+    props.lesson?.id ?? null,
+    props.conversationTopic?.key ?? null,
+    props.practiceMode === 'guided' ? props.planId ?? null : null,
+  ]);
+  return (
+    <PracticeSession
+      key={scope}
+      {...props}
+      preferredInputMode={preferredInputMode}
+      setPreferredInputMode={setPreferredInputMode}
+    />
+  );
+}
+
+function PracticeSession({
+  conversationTopic,
+  learnLanguage,
+  learnerLevel,
+  lesson,
+  locale,
+  nativeLanguage,
+  nextLessonId,
+  planId,
+  practiceMode,
+  progressStatus,
+  returnHref,
+  returnLabel,
+  requiredTurns,
+  speechLocale,
+  speechStyle,
+  successCriteria,
+  teacherAvatarUrl,
+  teacherDescription,
+  teacherName,
+  userId,
+  voiceName,
+  preferredInputMode,
+  setPreferredInputMode,
+}: PracticeClientProps & {
+  preferredInputMode: MobileInputMode;
+  setPreferredInputMode: (mode: MobileInputMode) => void;
 }) {
   const activeTopic = conversationTopic ?? null;
   const activePracticeMode = practiceMode;
   const topicInitialPrompt = activeTopic?.openingPrompt ?? '';
-  const [messages, setMessages] = useState<PracticeMessage[]>(() =>
-    activeTopic
-      ? [
-          {
-            role: 'assistant',
-            content: topicInitialPrompt,
-          },
-        ]
-      : []
-  );
+  // Untagged history is available separately in the read-only legacy viewer.
+  // Restore active messages only from this plan (or the explicit no-plan scope).
+  const storagePlanSuffix =
+    activePracticeMode === 'guided' ? `.plan.${planId ?? 'none'}` : '';
+  const storageKey =
+    userId && lesson && activePracticeMode !== 'topic_free'
+      ? `aitalk.practice.${userId}.lesson.${lesson.id}.${activePracticeMode}${storagePlanSuffix}`
+      : '';
+  const [messages, setMessages] = useState<PracticeMessage[]>(() => {
+    if (activeTopic) {
+      return [{ role: 'assistant', content: topicInitialPrompt }];
+    }
+    return (storageKey && loadStoredMessages(storageKey)) || [];
+  });
   const [text, setText] = useState('');
-  const [mobileInputMode, setMobileInputMode] =
-    useState<MobileInputMode>('voice');
   const [recordingStatus, setRecordingStatus] =
     useState<RecordingStatus>('idle');
-  const [speechSupported, setSpeechSupported] = useState(true);
+  const [speechSupported, setSpeechSupported] = useState(
+    () =>
+      Boolean(navigator.mediaDevices?.getUserMedia) &&
+      typeof MediaRecorder !== 'undefined'
+  );
+  const mobileInputMode = speechSupported ? preferredInputMode : 'text';
   const [error, setError] = useState('');
   const [errorRecovery, setErrorRecovery] = useState<ErrorRecovery>(null);
   const [failedTutorTurn, setFailedTutorTurn] =
     useState<FailedTutorTurn | null>(null);
   const [autoStartAttempt, setAutoStartAttempt] = useState(0);
-  const [autoStarting, setAutoStarting] = useState(false);
+  const [autoStartFinished, setAutoStartFinished] = useState(false);
   const [pending, setPending] = useState(false);
-  const [lessonCompleted, setLessonCompleted] = useState(
-    progressStatus === 'completed' ||
-      activePracticeMode === 'review' ||
-      activePracticeMode === 'completed_lesson_free'
-  );
   const [lessonCompletedInSession, setLessonCompletedInSession] =
     useState(false);
   const [criteriaStatus, setCriteriaStatus] = useState<TutorCriteriaStatus[]>(
@@ -341,7 +431,6 @@ export function PracticeClient({
   );
   const [practiceReport, setPracticeReport] =
     useState<TutorPracticeReport | null>(null);
-  const [hydratedScope, setHydratedScope] = useState('');
   const [speakingMessageIndex, setSpeakingMessageIndex] = useState<
     number | null
   >(null);
@@ -351,10 +440,15 @@ export function PracticeClient({
   const recordingStreamRef = useRef<MediaStream | null>(null);
   const recordingChunksRef = useRef<BlobPart[]>([]);
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const audioUrlRef = useRef('');
   const audioUnlockedRef = useRef(false);
-  const speechRunIdRef = useRef(0);
-  const autoStartScopeRef = useRef('');
+  const sessionAbortRef = useRef<AbortController | null>(null);
+  const speechAbortRef = useRef<AbortController | null>(null);
+  const recordingStartPendingRef = useRef(false);
+  const draftRef = useRef('');
+  const draftRevisionRef = useRef(0);
+  const autoStartRequestRef = useRef<ReturnType<typeof askTutorAction> | null>(
+    null
+  );
   const practiceRootRef = useRef<HTMLDivElement | null>(null);
   const mobileComposerRef = useRef<HTMLDivElement | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
@@ -363,22 +457,16 @@ export function PracticeClient({
     () => activeTopic?.title ?? displayLessonTitle(lesson),
     [activeTopic, lesson]
   );
-  const storageKey = useMemo(() => {
-    if (!userId || !lesson || activePracticeMode === 'topic_free') return '';
-    return `aitalk.practice.${userId}.lesson.${lesson.id}.${activePracticeMode}`;
-  }, [activePracticeMode, lesson, userId]);
-  const practiceScope = useMemo(() => {
-    if (activeTopic) return `topic.${activeTopic.key}`;
-    return [
-      'lesson',
-      lesson?.id ?? 'none',
-      activePracticeMode,
-      userId ?? 'anonymous',
-    ].join('.');
-  }, [activePracticeMode, activeTopic, lesson?.id, userId]);
   const isLessonPractice = Boolean(
     lesson && activePracticeMode !== 'topic_free'
   );
+  const autoStarting =
+    isLessonPractice && messages.length === 0 && !autoStartFinished;
+  const lessonCompleted =
+    progressStatus === 'completed' ||
+    activePracticeMode === 'review' ||
+    activePracticeMode === 'completed_lesson_free' ||
+    lessonCompletedInSession;
   const modeLabel = getModeLabel(activePracticeMode);
   const modeDescription = getModeDescription(activePracticeMode);
   const tutorName = teacherName || 'AITalk tutor';
@@ -395,66 +483,20 @@ export function PracticeClient({
   }, [activePracticeMode, activeTopic, lesson, title]);
 
   useEffect(() => {
-    setText('');
-    setError('');
-    setErrorRecovery(null);
-    setFailedTutorTurn(null);
-    setLessonCompleted(
-      progressStatus === 'completed' ||
-        activePracticeMode === 'review' ||
-        activePracticeMode === 'completed_lesson_free'
-    );
-    setLessonCompletedInSession(false);
-    setCriteriaStatus(
-      activePracticeMode === 'guided'
-        ? buildPendingCriteria(successCriteria)
-        : []
-    );
-    setPracticeReport(null);
-    autoStartScopeRef.current = '';
-
-    if (activeTopic) {
-      setMessages([
-        {
-          role: 'assistant',
-          content: topicInitialPrompt,
-        },
-      ]);
-      setHydratedScope(practiceScope);
-      return;
-    }
-
-    const storedMessages = storageKey ? loadStoredMessages(storageKey) : null;
-    setMessages(storedMessages?.length ? storedMessages : []);
-    setHydratedScope(practiceScope);
-  }, [
-    activePracticeMode,
-    practiceScope,
-    progressStatus,
-    storageKey,
-    activeTopic,
-    topicInitialPrompt,
-    successCriteria,
-  ]);
-
-  useEffect(() => {
-    if (!storageKey || hydratedScope !== practiceScope) return;
-    saveStoredMessages(storageKey, messages);
-  }, [hydratedScope, messages, practiceScope, storageKey]);
-
-  useEffect(() => {
-    setSpeechSupported(
-      typeof navigator !== 'undefined' &&
-        Boolean(navigator.mediaDevices?.getUserMedia) &&
-        typeof MediaRecorder !== 'undefined'
-    );
+    // A new controller for every setup prevents Strict Mode replay from
+    // reviving work belonging to the previous setup.
+    const controller = new AbortController();
+    sessionAbortRef.current = controller;
+    return () => {
+      controller.abort();
+      stopRecordingStream();
+      stopCurrentSpeech();
+    };
   }, []);
 
   useEffect(() => {
-    if (!speechSupported) {
-      setMobileInputMode('text');
-    }
-  }, [speechSupported]);
+    if (storageKey) saveStoredMessages(storageKey, messages);
+  }, [messages, storageKey]);
 
   useEffect(() => {
     const root = practiceRootRef.current;
@@ -477,9 +519,15 @@ export function PracticeClient({
   }, []);
 
   useEffect(() => {
-    if (hydratedScope !== practiceScope) return;
-
     const frame = window.requestAnimationFrame(() => {
+      // A current tutor reply must not pull the reader away from old records.
+      if (
+        practiceRootRef.current?.querySelector(
+          'details[data-legacy-history][open]'
+        )
+      ) {
+        return;
+      }
       messagesEndRef.current?.scrollIntoView({
         behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches
           ? 'auto'
@@ -492,11 +540,9 @@ export function PracticeClient({
   }, [
     autoStarting,
     error,
-    hydratedScope,
     messages.length,
     mobileInputMode,
     pending,
-    practiceScope,
   ]);
 
   useEffect(() => {
@@ -505,6 +551,13 @@ export function PracticeClient({
 
     const keepLatestMessageVisible = () => {
       window.requestAnimationFrame(() => {
+        if (
+          practiceRootRef.current?.querySelector(
+            'details[data-legacy-history][open]'
+          )
+        ) {
+          return;
+        }
         messagesEndRef.current?.scrollIntoView({
           behavior: 'auto',
           block: 'nearest',
@@ -517,19 +570,19 @@ export function PracticeClient({
       viewport.removeEventListener('resize', keepLatestMessageVisible);
   }, []);
 
+  const speakOpeningReply = useEffectEvent((reply: string) => {
+    void speak(reply, 0, { interrupt: true, suppressError: true });
+  });
+
   useEffect(() => {
-    if (!isLessonPractice) return;
-    if (hydratedScope !== practiceScope) return;
-    if (messages.length > 0) return;
-    if (autoStartScopeRef.current === practiceScope) return;
-
-    autoStartScopeRef.current = practiceScope;
+    if (!autoStarting) return;
+    const signal = sessionAbortRef.current?.signal;
+    if (!signal || signal.aborted) return;
     let cancelled = false;
-    setAutoStarting(true);
-    setError('');
-    setErrorRecovery(null);
 
-    askTutorAction({
+    // Re-subscribe to the same attempt after Strict Mode cleanup or an
+    // equivalent-props render; do not issue a second server action.
+    const request = (autoStartRequestRef.current ??= askTutorAction({
       autoSend: true,
       chatTopic: tutorTopic,
       conversationMode: activePracticeMode,
@@ -549,9 +602,10 @@ export function PracticeClient({
       topicTitle: activeTopic?.title,
       locale,
       messages: [],
-    })
+    }));
+    request
       .then((result) => {
-        if (cancelled) return;
+        if (cancelled || signal.aborted) return;
         if ('error' in result && result.error) {
           setError(result.error);
           setErrorRecovery('auto-start');
@@ -568,18 +622,15 @@ export function PracticeClient({
             content: assistantReply,
           },
         ]);
-        void speak(assistantReply, 0, {
-          interrupt: true,
-          suppressError: true,
-        });
+        speakOpeningReply(assistantReply);
       })
       .catch((error) => {
-        if (cancelled) return;
+        if (cancelled || signal.aborted) return;
         setError(getErrorMessage(error) || 'Tutor could not start the lesson.');
         setErrorRecovery('auto-start');
       })
       .finally(() => {
-        if (!cancelled) setAutoStarting(false);
+        if (!cancelled && !signal.aborted) setAutoStartFinished(true);
       });
 
     return () => {
@@ -587,7 +638,6 @@ export function PracticeClient({
     };
   }, [
     activePracticeMode,
-    hydratedScope,
     isLessonPractice,
     learnLanguage,
     learnerLevel,
@@ -596,23 +646,24 @@ export function PracticeClient({
     messages.length,
     nativeLanguage,
     planId,
-    practiceScope,
     requiredTurns,
     successCriteria,
     teacherName,
     activeTopic,
     autoStartAttempt,
+    autoStarting,
     tutorTopic,
   ]);
 
-  useEffect(() => {
-    return () => {
-      stopRecordingStream();
-      stopCurrentSpeech();
-    };
-  }, []);
+  function updateText(value: string) {
+    draftRef.current = value;
+    draftRevisionRef.current += 1;
+    setText(value);
+  }
 
   async function startListening() {
+    const signal = sessionAbortRef.current?.signal;
+    if (!signal || signal.aborted || recordingStartPendingRef.current) return;
     if (
       !navigator.mediaDevices?.getUserMedia ||
       typeof MediaRecorder === 'undefined'
@@ -621,11 +672,17 @@ export function PracticeClient({
       return;
     }
 
+    recordingStartPendingRef.current = true;
+    const draftRevision = draftRevisionRef.current;
     unlockAudioPlayback();
     setError('');
     setErrorRecovery(null);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      if (signal.aborted) {
+        stream.getTracks().forEach((track) => track.stop());
+        return;
+      }
       recordingStreamRef.current = stream;
       recordingChunksRef.current = [];
       const mimeType = resolveRecordingMimeType();
@@ -636,28 +693,30 @@ export function PracticeClient({
       mediaRecorderRef.current = recorder;
 
       recorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
+        if (!signal.aborted && event.data.size > 0) {
           recordingChunksRef.current.push(event.data);
         }
       };
       recorder.onerror = () => {
+        if (signal.aborted) return;
         setError('Recording failed. You can keep typing instead.');
         setErrorRecovery(null);
         setRecordingStatus('idle');
         stopRecordingStream();
       };
       recorder.onstop = () => {
+        if (signal.aborted) return;
         const audioBlob = new Blob(recordingChunksRef.current, {
           type: recorder.mimeType || mimeType || 'audio/webm',
         });
-        recordingChunksRef.current = [];
         stopRecordingStream();
-        void transcribeAudio(audioBlob);
+        void transcribeAudio(audioBlob, signal, draftRevision);
       };
 
       recorder.start();
       setRecordingStatus('recording');
     } catch (error) {
+      if (signal.aborted) return;
       setError(
         getErrorMessage(error) ||
           'Microphone permission was denied. You can keep typing instead.'
@@ -665,6 +724,8 @@ export function PracticeClient({
       setErrorRecovery(null);
       setRecordingStatus('idle');
       stopRecordingStream();
+    } finally {
+      if (!signal.aborted) recordingStartPendingRef.current = false;
     }
   }
 
@@ -680,9 +741,19 @@ export function PracticeClient({
   }
 
   function stopRecordingStream() {
+    const recorder = mediaRecorderRef.current;
+    mediaRecorderRef.current = null;
+    if (recorder) {
+      // Unmount must not turn the recorder's final events into a new STT call.
+      recorder.ondataavailable = null;
+      recorder.onerror = null;
+      recorder.onstop = null;
+      if (recorder.state !== 'inactive') recorder.stop();
+    }
     recordingStreamRef.current?.getTracks().forEach((track) => track.stop());
     recordingStreamRef.current = null;
-    mediaRecorderRef.current = null;
+    recordingChunksRef.current = [];
+    recordingStartPendingRef.current = false;
   }
 
   function resolveRecordingMimeType() {
@@ -702,7 +773,12 @@ export function PracticeClient({
     return lang.split('-')[0]?.toLowerCase() || '';
   }
 
-  async function transcribeAudio(audioBlob: Blob) {
+  async function transcribeAudio(
+    audioBlob: Blob,
+    signal: AbortSignal,
+    draftRevision: number
+  ) {
+    if (signal.aborted) return;
     if (audioBlob.size === 0) {
       setError('Recording is empty. Please try again.');
       setErrorRecovery(null);
@@ -714,44 +790,48 @@ export function PracticeClient({
     setError('');
     setErrorRecovery(null);
     try {
-      const result = await fetchSpeechTranscript(audioBlob);
+      const result = await fetchSpeechTranscript(audioBlob, signal);
+      if (signal.aborted) return;
       const transcriptText = result.text.trim();
       if (!transcriptText) {
         setError('No speech was detected. Please try again or type instead.');
         setErrorRecovery(null);
         return;
       }
-      const nextText = text.trim()
-        ? `${text.trim()} ${transcriptText}`
-        : transcriptText;
+      const draft = draftRef.current.trim();
+      const nextText = draft ? `${draft} ${transcriptText}` : transcriptText;
       setRecordingStatus('idle');
 
-      if (!submitText(nextText, { ignoreRecordingStatus: true })) {
-        setText(nextText);
+      // A user may keep editing while transcription is in flight. Preserve
+      // those edits for review instead of submitting a stale captured draft.
+      if (
+        draftRevisionRef.current !== draftRevision ||
+        !submitText(nextText, { ignoreRecordingStatus: true })
+      ) {
+        updateText(nextText);
       }
     } catch (error) {
+      if (signal.aborted) return;
       setError(getErrorMessage(error) || 'Speech transcription failed.');
       setErrorRecovery(null);
     } finally {
-      setRecordingStatus('idle');
+      if (!signal.aborted) setRecordingStatus('idle');
     }
   }
 
-  function revokeCurrentAudioUrl() {
-    if (!audioUrlRef.current) return;
-    URL.revokeObjectURL(audioUrlRef.current);
-    audioUrlRef.current = '';
-  }
-
   function stopCurrentSpeech() {
+    speechAbortRef.current?.abort();
+    speechAbortRef.current = null;
     audioRef.current?.pause();
     audioRef.current = null;
-    revokeCurrentAudioUrl();
   }
 
   function unlockAudioPlayback() {
     if (audioUnlockedRef.current) return;
+    const signal = sessionAbortRef.current?.signal;
+    if (!signal || signal.aborted) return;
     audioUnlockedRef.current = true;
+    let closeAudioContext: (() => void) | undefined;
 
     try {
       const audioWindow = window as AudioContextWindow;
@@ -760,6 +840,17 @@ export function PracticeClient({
       if (!AudioContextConstructor) return;
 
       const audioContext = new AudioContextConstructor();
+      let closeTimer: number | undefined;
+      let closed = false;
+      const close = () => {
+        if (closed) return;
+        closed = true;
+        window.clearTimeout(closeTimer);
+        signal.removeEventListener('abort', close);
+        void audioContext.close().catch(() => undefined);
+      };
+      closeAudioContext = close;
+      signal.addEventListener('abort', close, { once: true });
       const oscillator = audioContext.createOscillator();
       const gain = audioContext.createGain();
       gain.gain.value = 0;
@@ -767,12 +858,11 @@ export function PracticeClient({
       gain.connect(audioContext.destination);
       oscillator.start();
       oscillator.stop(audioContext.currentTime + 0.01);
-      void audioContext.resume().finally(() => {
-        window.setTimeout(() => {
-          void audioContext.close().catch(() => undefined);
-        }, 100);
-      });
+      void audioContext.resume().then(() => {
+        if (!signal.aborted) closeTimer = window.setTimeout(close, 100);
+      }, close);
     } catch {
+      closeAudioContext?.();
       audioUnlockedRef.current = false;
     }
   }
@@ -782,11 +872,20 @@ export function PracticeClient({
     messageIndex: number,
     options: SpeakOptions = {}
   ) {
+    const sessionSignal = sessionAbortRef.current?.signal;
+    if (!sessionSignal || sessionSignal.aborted) return;
     const lang = normalizeAitalkSpeechLang(speechLocale);
     const nextText = prepareAitalkSpeechText(value, lang);
     if (!nextText) return;
     if (speakingMessageIndex !== null && !options.interrupt) return;
 
+    // Own the run before the first await, including hashing and cache reads.
+    stopCurrentSpeech();
+    const controller = new AbortController();
+    speechAbortRef.current = controller;
+    const { signal } = controller;
+    const abortSpeech = () => controller.abort();
+    sessionSignal.addEventListener('abort', abortSpeech, { once: true });
     const selectedVoiceName = resolveAitalkVoiceName(lang, voiceName);
     const selectedStyle = speechStyle || DEFAULT_AITALK_SPEECH_STYLE;
     const input: SpeechInput = {
@@ -796,36 +895,27 @@ export function PracticeClient({
       rate: 'default',
       style: selectedStyle,
     };
-    const cacheKey = await digestCacheKey(
-      JSON.stringify({
-        text: nextText,
-        lang,
-        name: selectedVoiceName,
-        style: selectedStyle,
-        rate: input.rate,
-      })
-    );
-
-    const speechRunId = speechRunIdRef.current + 1;
-    speechRunIdRef.current = speechRunId;
-    stopCurrentSpeech();
     setError('');
     setErrorRecovery(null);
     setSpeakingPhase('loading');
     setSpeakingMessageIndex(messageIndex);
 
-    const markPlaybackStarted = () => {
-      if (speechRunIdRef.current !== speechRunId) return;
-      setSpeakingPhase('playing');
-    };
-
     try {
-      await playCachedOrGeneratedSpeechAudio(
-        input,
-        cacheKey,
-        markPlaybackStarted
+      const cacheKey = await digestCacheKey(
+        JSON.stringify({
+          text: nextText,
+          lang,
+          name: selectedVoiceName,
+          style: selectedStyle,
+          rate: input.rate,
+        })
       );
+      signal.throwIfAborted();
+      await playCachedOrGeneratedSpeechAudio(input, cacheKey, signal, () => {
+        if (!signal.aborted) setSpeakingPhase('playing');
+      });
     } catch (error: unknown) {
+      if (signal.aborted) return;
       console.warn('aitalk_speech_playback_failed', error);
       const message = getErrorMessage(error) || 'Text-to-speech failed.';
       if (!options.suppressError) {
@@ -833,7 +923,9 @@ export function PracticeClient({
         setErrorRecovery(null);
       }
     } finally {
-      if (speechRunIdRef.current === speechRunId) {
+      sessionSignal.removeEventListener('abort', abortSpeech);
+      if (!signal.aborted && speechAbortRef.current === controller) {
+        speechAbortRef.current = null;
         setSpeakingMessageIndex(null);
         setSpeakingPhase('loading');
       }
@@ -843,57 +935,86 @@ export function PracticeClient({
   async function playCachedOrGeneratedSpeechAudio(
     input: SpeechInput,
     cacheKey: string,
+    signal: AbortSignal,
     onPlaybackStart?: () => void
   ) {
     const cachedAudio = await getCachedAudio(cacheKey).catch(() => null);
-    const audioBlob = cachedAudio || (await fetchSpeechAudio(input));
+    signal.throwIfAborted();
+    const audioBlob = cachedAudio || (await fetchSpeechAudio(input, signal));
+    signal.throwIfAborted();
     if (!cachedAudio) {
       await setCachedAudio(cacheKey, audioBlob).catch(() => undefined);
+      signal.throwIfAborted();
     }
 
-    await playAudioBlob(audioBlob, onPlaybackStart);
+    await playAudioBlob(audioBlob, signal, onPlaybackStart);
   }
 
-  async function playAudioBlob(audioBlob: Blob, onPlaybackStart?: () => void) {
-    revokeCurrentAudioUrl();
-
+  async function playAudioBlob(
+    audioBlob: Blob,
+    signal: AbortSignal,
+    onPlaybackStart?: () => void
+  ) {
+    signal.throwIfAborted();
     const audioUrl = URL.createObjectURL(audioBlob);
-    const audio = new Audio(audioUrl);
-    audioUrlRef.current = audioUrl;
+    let audio: HTMLAudioElement;
+    try {
+      audio = new Audio(audioUrl);
+    } catch (error) {
+      URL.revokeObjectURL(audioUrl);
+      throw error;
+    }
     audioRef.current = audio;
 
     await new Promise<void>((resolve, reject) => {
-      audio.onended = () => {
+      let finished = false;
+      const finish = (error?: unknown) => {
+        if (finished) return;
+        finished = true;
+        audio.onended = null;
+        audio.onerror = null;
+        audio.onplaying = null;
+        signal.removeEventListener('abort', onAbort);
+        audio.pause();
         if (audioRef.current === audio) audioRef.current = null;
-        revokeCurrentAudioUrl();
-        resolve();
+        // This run owns this URL; an old event cannot revoke a newer run's URL.
+        URL.revokeObjectURL(audioUrl);
+        if (error) reject(error);
+        else resolve();
       };
-      audio.onerror = () => {
-        if (audioRef.current === audio) audioRef.current = null;
-        revokeCurrentAudioUrl();
-        reject(new Error('Audio playback failed.'));
-      };
+      const onAbort = () => finish();
+      signal.addEventListener('abort', onAbort, { once: true });
+      audio.onended = () => finish();
+      audio.onerror = () => finish(new Error('Audio playback failed.'));
       audio.onplaying = () => {
-        onPlaybackStart?.();
+        if (!signal.aborted) onPlaybackStart?.();
       };
-      audio.play().catch((error) => {
-        if (audioRef.current === audio) audioRef.current = null;
-        revokeCurrentAudioUrl();
-        reject(error);
-      });
+      if (signal.aborted) finish();
+      else {
+        try {
+          void audio.play().catch(finish);
+        } catch (error) {
+          finish(error);
+        }
+      }
     });
   }
 
-  async function fetchSpeechAudio(input: SpeechInput) {
+  async function fetchSpeechAudio(
+    input: SpeechInput,
+    signal: AbortSignal
+  ) {
     const {
       data: { session },
     } = await supabase.auth.getSession();
+    signal.throwIfAborted();
 
     if (session?.access_token) {
       const directResponse = await fetch(
         `${SUPABASE_URL.replace(/\/$/, '')}/functions/v1/text-speech`,
         {
           method: 'POST',
+          signal,
           headers: {
             Accept: 'audio/mpeg, application/octet-stream',
             apikey: SUPABASE_ANON_KEY,
@@ -911,8 +1032,10 @@ export function PracticeClient({
       }
     }
 
+    signal.throwIfAborted();
     const response = await fetch('/api/aitalk/text-speech', {
       method: 'POST',
+      signal,
       headers: {
         'Content-Type': 'application/json',
       },
@@ -929,12 +1052,16 @@ export function PracticeClient({
     return response.blob();
   }
 
-  async function fetchSpeechTranscript(audioBlob: Blob) {
+  async function fetchSpeechTranscript(
+    audioBlob: Blob,
+    signal: AbortSignal
+  ) {
     const language = resolveSttLanguage();
     const prompt = title ? `AITalk English speaking lesson: ${title}` : '';
 
     const response = await fetch('/api/aitalk/speech-to-text', {
       method: 'POST',
+      signal,
       body: buildSpeechTranscriptFormData({
         audioBlob,
         language,
@@ -954,6 +1081,8 @@ export function PracticeClient({
     nextText: string,
     nextMessages: PracticeMessage[]
   ) {
+    const signal = sessionAbortRef.current?.signal;
+    if (!signal || signal.aborted) return;
     let replyAdded = false;
     setPending(true);
     setError('');
@@ -982,6 +1111,7 @@ export function PracticeClient({
         locale,
         messages: nextMessages,
       });
+      if (signal.aborted) return;
 
       if ('error' in result && result.error) {
         setError(result.error);
@@ -1034,12 +1164,12 @@ export function PracticeClient({
       if (tutorCompleted && result.completion) {
         setCriteriaStatus(result.completion.criteria_status);
         setPracticeReport(result.completion);
-        setLessonCompleted(true);
         setLessonCompletedInSession(true);
       }
 
       void speak(assistantReply, assistantIndex, { interrupt: true });
     } catch (error) {
+      if (signal.aborted) return;
       if (!replyAdded) {
         setError(getErrorMessage(error) || 'Tutor is unavailable.');
         setErrorRecovery('tutor-turn');
@@ -1055,7 +1185,7 @@ export function PracticeClient({
         setFailedTutorTurn(null);
       }
     } finally {
-      setPending(false);
+      if (!signal.aborted) setPending(false);
     }
   }
 
@@ -1066,6 +1196,7 @@ export function PracticeClient({
     const nextText = value.trim();
     if (
       !nextText ||
+      sessionAbortRef.current?.signal.aborted !== false ||
       pending ||
       autoStarting ||
       (!options.ignoreRecordingStatus && recordingStatus !== 'idle')
@@ -1078,7 +1209,7 @@ export function PracticeClient({
       { role: 'user', content: nextText },
     ];
     setMessages(nextMessages);
-    setText('');
+    updateText('');
     void runTutorTurn(nextText, nextMessages);
     return true;
   }
@@ -1089,7 +1220,8 @@ export function PracticeClient({
     if (errorRecovery === 'auto-start') {
       setError('');
       setErrorRecovery(null);
-      autoStartScopeRef.current = '';
+      autoStartRequestRef.current = null;
+      setAutoStartFinished(false);
       setAutoStartAttempt((attempt) => attempt + 1);
       return;
     }
@@ -1118,7 +1250,10 @@ export function PracticeClient({
   const canSubmit =
     !pending && !autoStarting && !recordingBusy && Boolean(text.trim());
   const micDisabled =
-    autoStarting || pending || recordingStatus === 'transcribing';
+    !speechSupported ||
+    autoStarting ||
+    pending ||
+    recordingStatus === 'transcribing';
   const mobileVoiceStatus = pending
     ? 'Sending'
     : autoStarting
@@ -1169,7 +1304,7 @@ export function PracticeClient({
                   type="button"
                   variant="outline"
                   className="h-11 rounded-xl border-red-200 bg-white px-3 text-red-700 hover:bg-red-100 md:hidden dark:border-red-400/30 dark:bg-white/10 dark:text-red-100 dark:hover:bg-white/15"
-                  onClick={() => setMobileInputMode('text')}
+                  onClick={() => setPreferredInputMode('text')}
                 >
                   <Keyboard className="size-4" />
                   Use text
@@ -1258,6 +1393,14 @@ export function PracticeClient({
           </div>
         </div>
       </div>
+
+      {userId && lesson && isLessonPractice ? (
+        <LegacyGuidedHistory
+          userId={userId}
+          lessonId={lesson.id}
+          locale={locale}
+        />
+      ) : null}
 
       {showGuidedChecklist ? (
         <LessonChecklist criteriaStatus={criteriaStatus} />
@@ -1349,7 +1492,7 @@ export function PracticeClient({
         <div className="flex items-center gap-2">
           <Textarea
             value={text}
-            onChange={(event) => setText(event.target.value)}
+            onChange={(event) => updateText(event.target.value)}
             placeholder={
               autoStarting
                 ? 'Wait for the tutor to start...'
@@ -1383,9 +1526,7 @@ export function PracticeClient({
             onClick={
               recordingStatus === 'recording' ? stopListening : startListening
             }
-            disabled={
-              autoStarting || pending || recordingStatus === 'transcribing'
-            }
+            disabled={micDisabled}
             aria-label={
               recordingStatus === 'recording'
                 ? 'Stop recording'
@@ -1482,7 +1623,7 @@ export function PracticeClient({
                     variant="outline"
                     size="icon"
                     className="size-11 rounded-2xl border-emerald-200 text-emerald-700 dark:border-emerald-400/30 dark:text-emerald-200"
-                    onClick={() => setMobileInputMode('text')}
+                    onClick={() => setPreferredInputMode('text')}
                     aria-label="Type answer"
                   >
                     <Keyboard className="size-4" />
@@ -1493,7 +1634,7 @@ export function PracticeClient({
               <div className="grid gap-3">
                 <Textarea
                   value={text}
-                  onChange={(event) => setText(event.target.value)}
+                  onChange={(event) => updateText(event.target.value)}
                   placeholder={
                     autoStarting
                       ? 'Wait for the tutor to start...'
@@ -1525,7 +1666,7 @@ export function PracticeClient({
                     variant="outline"
                     size="icon"
                     className="size-12 rounded-2xl"
-                    onClick={() => setMobileInputMode('voice')}
+                    onClick={() => setPreferredInputMode('voice')}
                     disabled={!speechSupported}
                     aria-label="Use voice input"
                   >
@@ -1551,6 +1692,149 @@ export function PracticeClient({
         </div>
       </div>
     </div>
+  );
+}
+
+function LegacyGuidedHistory({
+  userId,
+  lessonId,
+  locale,
+}: {
+  userId: string;
+  lessonId: number;
+  locale: string;
+}) {
+  // This child lives inside the keyed session. Scope changes discard its view;
+  // it never shares state or callbacks with the active conversation.
+  const [history, setHistory] = useState<LegacyHistory | null>(null);
+  const [page, setPage] = useState(0);
+  const chinese = /^zh(?:-|$)/i.test(locale);
+  const title = chinese
+    ? '查看旧版聊天记录（只读，未关联计划）'
+    : 'View legacy chat (read-only, not linked to a plan)';
+  const roleLabels = chinese
+    ? { user: '你', assistant: '导师', system: '系统' }
+    : { user: 'You', assistant: 'Tutor', system: 'System' };
+  const notices = chinese
+    ? {
+        empty: '本浏览器中没有当前账号、本课程的旧版聊天记录。',
+        invalid: '旧记录格式损坏，暂无法显示。原始数据未改动。',
+        unavailable:
+          '浏览器暂不允许读取旧记录。请检查浏览器存储设置后重新展开。',
+      }
+    : {
+        empty:
+          'No legacy chat for this account and lesson is saved in this browser.',
+        invalid:
+          'The legacy record format is invalid and cannot be displayed. The original data is unchanged.',
+        unavailable:
+          'The browser could not read the legacy record. Check browser storage settings and reopen this section.',
+      };
+
+  return (
+    <details
+      data-legacy-history=""
+      className="mt-4 min-w-0 rounded-2xl border border-zinc-200 bg-white text-zinc-900 dark:border-white/10 dark:bg-white/5 dark:text-zinc-100"
+      onToggle={(event) => {
+        if (!event.currentTarget.open) return;
+        // Read only the exact current account/course key, on explicit open.
+        // Never adopt, migrate, rewrite, or delete these untagged messages.
+        setHistory(
+          readLegacyHistory(
+            `aitalk.practice.${userId}.lesson.${lessonId}.guided`
+          )
+        );
+        setPage(0);
+      }}
+    >
+      <summary className="min-h-11 cursor-pointer rounded-2xl px-4 py-3 text-sm font-bold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600">
+        {title}
+      </summary>
+      <div
+        role="region"
+        aria-label={title}
+        className="border-t border-zinc-200 p-4 dark:border-white/10"
+      >
+        <p className="text-sm leading-6">
+          {chinese
+            ? '仅查看本浏览器中当前账号、本课程的旧版记录。记录未关联计划；不会自动加入当前对话、发给导师或改变学习进度。'
+            : 'These legacy records are from this browser, for the current account and lesson. They are not linked to a plan. Viewing them does not add them to the current conversation, send them to the tutor, or change learning progress.'}
+        </p>
+        {history && history.status !== 'ready' ? (
+          <p className="mt-3 text-sm" role="status">
+            {notices[history.status]}
+          </p>
+        ) : null}
+        {history?.status === 'ready' ? (
+          <>
+            {history.skipped ? (
+              <p
+                className="mt-3 text-sm text-amber-800 dark:text-amber-200"
+                role="status"
+              >
+                {chinese
+                  ? '部分记录格式损坏，已跳过无法显示的条目。原始数据未改动。'
+                  : 'Some entries have an invalid format and were skipped. The original data is unchanged.'}
+              </p>
+            ) : null}
+            <ol
+              className="mt-3 grid min-w-0 gap-3"
+              start={page * LEGACY_HISTORY_PAGE_SIZE + 1}
+            >
+              {history.messages
+                .slice(
+                  page * LEGACY_HISTORY_PAGE_SIZE,
+                  (page + 1) * LEGACY_HISTORY_PAGE_SIZE
+                )
+                .map((message, index) => (
+                  <li
+                    key={page * LEGACY_HISTORY_PAGE_SIZE + index}
+                    className="min-w-0 rounded-xl bg-zinc-100 p-3 dark:bg-white/10"
+                  >
+                    <p className="mb-1 text-xs font-bold">
+                      {roleLabels[message.role]}
+                    </p>
+                    <p
+                      className="whitespace-pre-wrap text-sm leading-6"
+                      style={{ overflowWrap: 'anywhere' }}
+                    >
+                      {message.content}
+                    </p>
+                  </li>
+                ))}
+            </ol>
+            {history.messages.length > LEGACY_HISTORY_PAGE_SIZE ? (
+              <div className="mt-3 flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  className="min-h-11 rounded-lg border px-3 text-sm disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2"
+                  disabled={page === 0}
+                  onClick={() => setPage(page - 1)}
+                >
+                  {chinese ? '上一页' : 'Previous page'}
+                </button>
+                <span className="text-sm" role="status">
+                  {chinese
+                    ? `第 ${page + 1} / ${Math.ceil(history.messages.length / LEGACY_HISTORY_PAGE_SIZE)} 页`
+                    : `Page ${page + 1} of ${Math.ceil(history.messages.length / LEGACY_HISTORY_PAGE_SIZE)}`}
+                </span>
+                <button
+                  type="button"
+                  className="min-h-11 rounded-lg border px-3 text-sm disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2"
+                  disabled={
+                    (page + 1) * LEGACY_HISTORY_PAGE_SIZE >=
+                    history.messages.length
+                  }
+                  onClick={() => setPage(page + 1)}
+                >
+                  {chinese ? '下一页' : 'Next page'}
+                </button>
+              </div>
+            ) : null}
+          </>
+        ) : null}
+      </div>
+    </details>
   );
 }
 

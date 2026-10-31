@@ -1,4 +1,5 @@
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
+import type { User as BetterAuthUser } from 'better-auth';
 import { oneTap } from 'better-auth/plugins';
 import { getLocale } from 'next-intl/server';
 
@@ -9,16 +10,13 @@ import {
   renderVerifyEmailHtml,
   renderVerifyEmailText,
 } from '@/shared/blocks/email/verify-email';
-import {
-  getCookieFromCtx,
-  getHeaderValue,
-  guessLocaleFromAcceptLanguage,
-} from '@/shared/lib/cookie';
 import { getUuid } from '@/shared/lib/hash';
 import { getClientIp } from '@/shared/lib/ip';
 import { grantCreditsForNewUser } from '@/shared/models/credit';
 import { getEmailService } from '@/shared/services/email';
 import { grantRoleForNewUser } from '@/shared/services/rbac';
+
+import { enrichNewUser } from './user-create-hook';
 
 // Best-effort dedupe to prevent sending verification emails too frequently.
 // This is especially helpful in dev/hot reload, transient network conditions,
@@ -107,49 +105,9 @@ export async function getAuthOptions(configs: Record<string, string>) {
     databaseHooks: {
       user: {
         create: {
-          before: async (user: any, ctx: any) => {
-            try {
-              const ip = await getClientIp();
-              if (ip) {
-                user.ip = ip;
-              }
-
-              // Prefer NEXT_LOCALE cookie (next-intl). Fallback to accept-language.
-              const localeFromCookie = getCookieFromCtx(ctx, 'NEXT_LOCALE');
-
-              const localeFromHeader = guessLocaleFromAcceptLanguage(
-                getHeaderValue(ctx, 'accept-language')
-              );
-
-              const locale =
-                (localeFromCookie || localeFromHeader || (await getLocale())) ??
-                '';
-
-              if (locale && typeof locale === 'string') {
-                user.locale = locale.slice(0, 20);
-              }
-
-              // Only set on first creation; never overwrite later.
-              if (user?.utmSource) return user;
-
-              const raw = getCookieFromCtx(ctx, 'utm_source');
-              if (!raw || typeof raw !== 'string') return user;
-
-              // Keep it small & safe.
-              const decoded = decodeURIComponent(raw).trim();
-              const sanitized = decoded
-                .replace(/[^\w\-.:]/g, '') // allow a-zA-Z0-9_ - . :
-                .slice(0, 100);
-
-              if (sanitized) {
-                user.utmSource = sanitized;
-              }
-            } catch {
-              // best-effort only
-            }
-            return user;
-          },
-          after: async (user: any) => {
+          before: async (user: BetterAuthUser & Record<string, unknown>, ctx: unknown) =>
+            enrichNewUser(user, ctx, { getClientIp, getLocale }),
+          after: async (user: { id: string; email: string; createdAt: Date }) => {
             try {
               if (!user.id) {
                 throw new Error('user id is required');
@@ -185,7 +143,7 @@ export async function getAuthOptions(configs: Record<string, string>) {
             // 24 hours
             expiresIn: 60 * 60 * 24,
             sendVerificationEmail: async (
-              { user, url }: { user: any; url: string; token: string },
+              { user, url }: { user: { email: string }; url: string; token: string },
               _request: Request
             ) => {
               try {
@@ -199,7 +157,7 @@ export async function getAuthOptions(configs: Record<string, string>) {
                   recentVerificationEmailSentAt.set(key, now);
                 }
 
-                const emailService = await getEmailService(configs as any);
+                const emailService = await getEmailService(configs);
                 const logoUrl = envConfigs.app_logo?.startsWith('http')
                   ? envConfigs.app_logo
                   : `${envConfigs.app_url}${envConfigs.app_logo?.startsWith('/') ? '' : '/'}${envConfigs.app_logo || ''}`;
@@ -242,7 +200,9 @@ export async function getAuthOptions(configs: Record<string, string>) {
 
 // get social providers with configs
 export async function getSocialProviders(configs: Record<string, string>) {
-  const providers: any = {};
+  const providers: Partial<
+    Record<'google' | 'github', { clientId: string; clientSecret: string }>
+  > = {};
 
   // google auth
   if (configs.google_client_id && configs.google_client_secret) {

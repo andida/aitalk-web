@@ -1,4 +1,55 @@
+import type {
+  AriaAttributes,
+  InputHTMLAttributes,
+  TextareaHTMLAttributes,
+} from 'react';
+
 import { Button } from './common';
+
+// Initial values are untrusted until the field schema has parsed them.
+export type FormInputValues = Record<string, unknown>;
+export type FormValue = string | number | boolean | string[];
+export type FormValues = Record<string, FormValue>;
+
+// Serializable attributes shared by the dynamic controls. Control-specific
+// callbacks and values belong to the control, not an untyped property bag.
+export type FormFieldAttributes = AriaAttributes &
+  Pick<
+    InputHTMLAttributes<HTMLInputElement>,
+    | 'id'
+    | 'name'
+    | 'className'
+    | 'style'
+    | 'title'
+    | 'disabled'
+    | 'readOnly'
+    | 'required'
+    | 'type'
+    | 'placeholder'
+    | 'autoComplete'
+    | 'autoFocus'
+    | 'tabIndex'
+    | 'inputMode'
+    | 'min'
+    | 'max'
+    | 'step'
+    | 'minLength'
+    | 'maxLength'
+    | 'pattern'
+    | 'accept'
+    | 'multiple'
+    | 'form'
+    | 'list'
+  > &
+  Pick<TextareaHTMLAttributes<HTMLTextAreaElement>, 'rows' | 'cols' | 'wrap'> & {
+    [name: `data-${string}`]: string | number | boolean | null | undefined;
+  };
+
+export interface FormFieldMetadata {
+  max?: number;
+  maxSizeMB?: number;
+  [name: string]: unknown;
+}
 
 type ValidationRule = {
   required?: boolean;
@@ -31,12 +82,13 @@ export interface FormField {
   options?: {
     title: string;
     value: string;
+    description?: string | null;
   }[];
-  value?: any;
+  value?: unknown;
   tip?: string;
-  attributes?: Record<string, any>;
+  attributes?: FormFieldAttributes;
   validation?: ValidationRule;
-  metadata?: Record<string, any>;
+  metadata?: FormFieldMetadata;
 }
 
 export interface FormSubmit {
@@ -45,7 +97,7 @@ export interface FormSubmit {
   action?: string;
   handler?: (
     data: FormData,
-    passby?: any
+    passby?: unknown
   ) => Promise<
     | {
         status: 'success' | 'error';
@@ -61,7 +113,7 @@ export interface Form {
   title?: string;
   description?: string;
   fields: FormField[];
-  data?: any;
-  passby?: any;
+  data?: unknown;
+  passby?: unknown;
   submit?: FormSubmit;
 }

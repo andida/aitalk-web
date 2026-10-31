@@ -8,6 +8,7 @@ import { nanoid } from 'nanoid';
 
 import { PromptInputMessage } from '@/shared/components/ai-elements/prompt-input';
 import { useChatContext } from '@/shared/contexts/chat';
+import { isPromptInputMessage, parseChatRequestMetadata } from '@/shared/lib/chat-input';
 
 import { ChatInput } from './input';
 
@@ -36,7 +37,7 @@ export function FollowUp({
           last.role === 'assistant' &&
           last.metadata &&
           typeof last.metadata === 'object' &&
-          (last.metadata as Record<string, any>).type === 'error' &&
+          (last.metadata as Record<string, unknown>).type === 'error' &&
           last.parts?.[0]?.type === 'text' &&
           last.parts[0].text === errorMessage
         ) {
@@ -80,7 +81,7 @@ export function FollowUp({
   const submitMessage = useCallback(
     async (
       message: PromptInputMessage,
-      body: Record<string, any>
+      body: Record<string, unknown>
     ): Promise<void> => {
       const hasText = Boolean(message.text);
       const hasAttachments = Boolean(message.files?.length);
@@ -132,12 +133,12 @@ export function FollowUp({
     if (
       chat?.id &&
       chat.id === params.id &&
-      chat.content &&
+      isPromptInputMessage(chat.content) &&
       chat.createdAt &&
       messages.length === 0
     ) {
       // auto send message in new chat
-      submitMessage(chat.content, chat.metadata ?? {});
+      submitMessage(chat.content, parseChatRequestMetadata(chat.metadata));
     }
   }, [params.id, chat, submitMessage, messages.length]);
 

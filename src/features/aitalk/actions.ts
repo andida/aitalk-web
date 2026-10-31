@@ -9,17 +9,15 @@ import {
   AITALK_ONBOARDING_PATH,
 } from './constants';
 import {
-  completeLessonProgress,
   createOrUpdateLearningPlan,
-  getLearningPlanItems,
   getLessonById,
   getLessonPracticeConfig,
   getLessonProgress,
   getLessonSteps,
   getProfile,
   getTextSpeech,
-  insertLessonAttempt,
   invokeCourseTutorAgent,
+  resolveOwnedActivePlanIdForLesson,
   startLessonProgress,
   updateCurrentLearningPlanLesson,
   upsertProfile,
@@ -28,6 +26,7 @@ import { normalizeLearningLevel } from './lib/course-plan';
 import { normalizeTopicKey, sanitizeTopicText } from './lib/free-talk-topics';
 import { withLocale } from './lib/paths';
 import { resolveTutorMode, saveTutorCompletion } from './lib/tutor-completion';
+import { commitTrustedCourseCompletion } from './supabase/complete-course';
 import { createAitalkServerClient } from './supabase/server';
 import type { ConversationMode, OnboardingInput } from './types';
 
@@ -187,9 +186,12 @@ export async function completeOnboardingAction(
       onboardingCompletedAt: new Date().toISOString(),
     });
     await createOrUpdateLearningPlan(supabase);
-  } catch (error: any) {
+  } catch (error: unknown) {
     return {
-      error: error?.message || 'Unable to save onboarding. Please try again.',
+      error:
+        error instanceof Error
+          ? error.message
+          : 'Unable to save onboarding. Please try again.',
     };
   }
 
@@ -243,7 +245,7 @@ export async function askTutorAction(input: {
   messages?: Array<{ role: string; content: string }>;
 }) {
   const supabase = await createAitalkServerClient();
-  const text = input.text.trim();
+  const text = typeof input.text === 'string' ? input.text.trim() : '';
   if (!text && !input.autoSend) {
     return { error: 'Please enter a sentence first.' };
   }
@@ -263,8 +265,10 @@ export async function askTutorAction(input: {
       return { error: 'Please select a valid lesson.' };
     }
     lessonId = input.lessonId;
-    if (!(await getLessonById(supabase, lessonId)))
+    const lesson = await getLessonById(supabase, lessonId);
+    if (!lesson || (lesson.status != null && lesson.status !== 1)) {
       return { error: 'Lesson not found.' };
+    }
     const [progress, steps] = await Promise.all([
       getLessonProgress(supabase, lessonId),
       getLessonSteps(supabase, lessonId),
@@ -272,18 +276,32 @@ export async function askTutorAction(input: {
     lessonCompleted = progress?.status === 'completed';
     conversationMode = resolveTutorMode(conversationMode, lessonCompleted);
     practiceConfig = getLessonPracticeConfig(steps);
-    if (conversationMode === 'guided' && input.planId) {
-      if (!Number.isSafeInteger(input.planId) || input.planId < 1)
+    if (conversationMode === 'guided') {
+      if (
+        input.planId !== undefined &&
+        (!Number.isSafeInteger(input.planId) || input.planId < 1)
+      ) {
         return { error: 'Invalid learning plan.' };
-      const items = await getLearningPlanItems(supabase, input.planId);
-      if (!items.some((item) => item.lesson_id === lessonId))
+      }
+      planId =
+        (await resolveOwnedActivePlanIdForLesson(
+          supabase,
+          lessonId,
+          input.planId,
+          lesson.language,
+          lesson.level_id ?? lesson.levelId
+        )) ?? undefined;
+      if (!planId) {
         return { error: 'Lesson is not in your learning plan.' };
-      planId = input.planId;
+      }
     }
   }
-  const messages = (input.messages ?? [])
+  const messages = (Array.isArray(input.messages) ? input.messages : [])
     .filter(
-      (message) => message.role === 'user' || message.role === 'assistant'
+      (message) =>
+        Boolean(message) &&
+        (message.role === 'user' || message.role === 'assistant') &&
+        typeof message.content === 'string'
     )
     .slice(-100)
     .map((message) => ({
@@ -334,28 +352,18 @@ export async function askTutorAction(input: {
       criteria: practiceConfig.successCriteria,
     },
     {
-      getProgress: () => getLessonProgress(supabase, lessonId!),
-      saveReport: async (report) => {
-        await insertLessonAttempt(supabase, {
-          lessonId: lessonId!,
+      commit: async (report) => {
+        if (!lessonId || !planId) {
+          throw new Error('Trusted course completion requires an owned plan');
+        }
+        return commitTrustedCourseCompletion(supabase, {
+          lessonId,
           planId,
-          practiceType: 'guided_roleplay',
+          report,
           transcript: JSON.stringify([
             ...messages,
             { role: 'assistant', content: reply },
           ]),
-          scores: { overall: report.score },
-          feedback: report,
-          metadata: {
-            conversationMode: 'guided',
-            source: 'server-tutor-result',
-          },
-        });
-      },
-      complete: async (report) => {
-        await completeLessonProgress(supabase, lessonId!, planId, {
-          score: report.score,
-          countAttempt: true,
         });
       },
     }
@@ -379,7 +387,7 @@ export async function textSpeechAction(input: {
   style?: string;
 }) {
   const supabase = await createAitalkServerClient();
-  const text = input.text.trim();
+  const text = typeof input.text === 'string' ? input.text.trim() : '';
   if (!text) return { error: 'Text is required.' };
 
   const data = await getTextSpeech(supabase, {

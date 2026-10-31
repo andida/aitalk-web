@@ -4,8 +4,10 @@ import { PERMISSIONS, requirePermission } from '@/core/rbac';
 import { Empty } from '@/shared/blocks/common';
 import { Header, Main, MainHeader } from '@/shared/blocks/dashboard';
 import { FormCard } from '@/shared/blocks/form';
+import { initialFieldValue } from '@/shared/blocks/form/value';
+import { readFormContextString, readFormString } from '@/shared/lib/form-action';
 import { grantCreditsForUser } from '@/shared/models/credit';
-import { findUserById } from '@/shared/models/user';
+import { findUserById, getUserInfo } from '@/shared/models/user';
 import { Crumb } from '@/shared/types/blocks/common';
 import { Form } from '@/shared/types/blocks/form';
 
@@ -75,9 +77,14 @@ export default async function UserGrantCreditsPage({
       },
     ],
     passby: {
-      user: user,
+      user: { id: user.id },
     },
-    data: user,
+    data: Object.fromEntries(
+      ['name', 'email', 'credits', 'valid_days', 'description'].map((name) => [
+        name,
+        initialFieldValue(user, name),
+      ])
+    ),
     submit: {
       button: {
         title: t('grant_credits.buttons.submit'),
@@ -85,15 +92,26 @@ export default async function UserGrantCreditsPage({
       handler: async (data, passby) => {
         'use server';
 
-        const { user } = passby;
-
-        if (!user) {
+        const actor = await getUserInfo();
+        if (!actor) {
           throw new Error('no auth');
         }
+        await requirePermission({
+          code: PERMISSIONS.USERS_WRITE,
+          redirectUrl: '/admin/no-permission',
+          locale,
+        });
+        if (readFormContextString(passby, 'user', 'id') !== id) {
+          throw new Error('invalid user context');
+        }
+        const user = await findUserById(id);
+        if (!user || user.id !== id) {
+          throw new Error('User not found');
+        }
 
-        const credits = parseInt(data.get('credits') as string) || 0;
-        const validDays = parseInt(data.get('valid_days') as string) || 0;
-        const description = data.get('description') as string;
+        const credits = parseInt(readFormString(data, 'credits') ?? '') || 0;
+        const validDays = parseInt(readFormString(data, 'valid_days') ?? '') || 0;
+        const description = readFormString(data, 'description');
 
         if (credits <= 0) {
           throw new Error('credits amount must be greater than 0');
@@ -103,7 +121,7 @@ export default async function UserGrantCreditsPage({
           user: user,
           credits: credits,
           validDays: validDays > 0 ? validDays : 0,
-          description: description,
+          description: description ?? undefined,
         });
 
         return {

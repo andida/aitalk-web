@@ -1,6 +1,38 @@
-import type { LessonListDetail, UserLearningPlanItem } from '../types';
+import type {
+  LessonListDetail,
+  UserLearningPlan,
+  UserLearningPlanItem,
+} from '../types';
 
 export const PLAN_LEVEL_SEGMENT = 1000;
+
+function comparableLearningLevel(value?: number | string | null) {
+  const match = String(value ?? '')
+    .trim()
+    .match(/^L?([1-5])$/i);
+  return match ? Number(match[1]) : null;
+}
+
+export function chooseOwnedActivePlanId(
+  plans: Array<Pick<UserLearningPlan, 'id' | 'language' | 'level'>>,
+  requestedPlanId?: number,
+  lessonLanguage?: string | null,
+  lessonLevel?: number | string | null
+) {
+  const normalizedLanguage = lessonLanguage?.trim().toLowerCase();
+  const normalizedLevel = comparableLearningLevel(lessonLevel);
+  const matching = plans.filter(
+    (plan) =>
+      (!normalizedLanguage ||
+        String(plan.language || '')
+          .trim()
+          .toLowerCase() === normalizedLanguage) &&
+      (normalizedLevel === null ||
+        comparableLearningLevel(plan.level) === normalizedLevel)
+  );
+  const requested = matching.find((plan) => plan.id === requestedPlanId);
+  return requested?.id ?? matching[0]?.id ?? null;
+}
 
 export function normalizeLearningLevel(value?: number | string | null) {
   const parsed =

@@ -2,6 +2,8 @@ import {
   PaymentEventType,
   SubscriptionCycleType,
 } from '@/extensions/payment/types';
+import { paymentOrderNumber } from '@/shared/lib/payment-metadata';
+import { errorMessage } from '@/shared/lib/error-message';
 import {
   findOrderByOrderNo,
   findOrderByTransactionId,
@@ -53,7 +55,7 @@ export async function POST(
 
     if (eventType === PaymentEventType.CHECKOUT_SUCCESS) {
       // one-time payment or subscription first payment
-      const orderNo = session.metadata.order_no;
+      const orderNo = paymentOrderNumber(session.metadata);
 
       if (!orderNo) {
         throw new Error('order no not found');
@@ -160,7 +162,7 @@ export async function POST(
         }
       } else {
         // handle one-time payment
-        const orderNo = session.metadata?.order_no;
+        const orderNo = paymentOrderNumber(session.metadata);
 
         if (!orderNo) {
           console.log('one-time payment: order_no not found in metadata, skipping');
@@ -223,11 +225,11 @@ export async function POST(
     return Response.json({
       message: 'success',
     });
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.log('handle payment notify failed', err);
     return Response.json(
       {
-        message: `handle payment notify failed: ${err.message}`,
+        message: `handle payment notify failed: ${errorMessage(err, 'unknown error')}`,
       },
       {
         status: 500,

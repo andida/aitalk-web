@@ -46,7 +46,7 @@ export default async function PostsPage({
     limit,
   });
 
-  const table: Table = {
+  const table: Table<Post> = {
     columns: [
       { name: 'title', title: t('fields.title') },
       { name: 'authorName', title: t('fields.author_name') },
@@ -64,7 +64,7 @@ export default async function PostsPage({
         name: 'categories',
         title: t('fields.categories'),
         callback: async (item: Post) => {
-          if (!item.categories) {
+          if (typeof item.categories !== 'string' || !item.categories) {
             return '-';
           }
           const categoriesIds = item.categories.split(',');
@@ -84,7 +84,6 @@ export default async function PostsPage({
       },
       { name: 'createdAt', title: t('fields.created_at'), type: 'time' },
       {
-        name: 'action',
         title: '',
         type: 'dropdown',
         callback: (item: Post) => {

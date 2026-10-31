@@ -1,6 +1,6 @@
 import { and, asc, count, desc, eq, gt, isNull, or, sum } from 'drizzle-orm';
 
-import { db } from '@/core/db';
+import { db, type DatabaseSession } from '@/core/db';
 import { credit } from '@/config/db/schema';
 import { getSnowId, getUuid } from '@/shared/lib/hash';
 
@@ -155,12 +155,12 @@ export async function consumeCredits({
   scene?: string;
   description?: string;
   metadata?: string;
-  tx?: any;
+  tx?: DatabaseSession;
 }) {
   const currentTime = new Date();
 
   // consume credits
-  const execute = async (tx: any) => {
+  const execute = async (tx: DatabaseSession) => {
     // 1. check credits balance
     const [creditsBalance] = await tx
       .select({
@@ -198,7 +198,17 @@ export async function consumeCredits({
     let batchNo = 1; // batch no
     const maxBatchNo = 10; // max batch no
     const batchSize = 1000; // batch size
-    const consumedItems: any[] = [];
+    const consumedItems: Array<{
+      creditId: string;
+      transactionNo: string;
+      expiresAt: Date | null;
+      creditsToConsume: number;
+      creditsConsumed: number;
+      creditsBefore: number;
+      creditsAfter: number;
+      batchSize: number;
+      batchNo: number;
+    }> = [];
 
     while (remainingToConsume > 0) {
       // get batch credits
@@ -321,7 +331,7 @@ export async function getRemainingCredits(userId: string): Promise<number> {
 }
 
 // grant credits for new user
-export async function grantCreditsForNewUser(user: User) {
+export async function grantCreditsForNewUser(user: Pick<User, 'id' | 'email'>) {
   // get configs from db
   const configs = await getAllConfigs();
 
@@ -358,7 +368,7 @@ export async function grantCreditsForUser({
   validDays,
   description,
 }: {
-  user: User;
+  user: Pick<User, 'id' | 'email'>;
   credits: number;
   validDays?: number;
   description?: string;

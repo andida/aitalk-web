@@ -58,10 +58,11 @@ export async function POST() {
         },
       }
     );
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const caughtError = error instanceof Error ? error : undefined;
     console.error('aitalk_azure_speech_token_error', {
-      message: error?.message,
+      message: caughtError?.message,
     });
-    return jsonError(error?.message || 'Azure Speech token failed.', 500);
+    return jsonError(caughtError?.message || 'Azure Speech token failed.', 500);
   }
 }

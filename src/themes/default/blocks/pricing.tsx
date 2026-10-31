@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Check, Loader2 } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
 import { toast } from 'sonner';
@@ -25,7 +25,9 @@ import {
 } from '@/shared/components/ui/select';
 import { Tabs, TabsList, TabsTrigger } from '@/shared/components/ui/tabs';
 import { useAppContext } from '@/shared/contexts/app';
+import { selectAffiliateReferral } from '@/shared/lib/affiliate-referral';
 import { getCookie } from '@/shared/lib/cookie';
+import { errorMessage } from '@/shared/lib/error-message';
 import { cn } from '@/shared/lib/utils';
 import { Subscription } from '@/shared/models/subscription';
 import {
@@ -76,6 +78,49 @@ function getInitialCurrency(
   return defaultCurrency;
 }
 
+function buildItemCurrencies(
+  items: PricingItem[] | undefined,
+  locale: string
+) {
+  const initialCurrencyStates: Record<
+    string,
+    { selectedCurrency: string; displayedItem: PricingItem }
+  > = {};
+
+  items?.forEach((item) => {
+    const currencies = getCurrenciesFromItem(item);
+    const selectedCurrency = getInitialCurrency(
+      currencies,
+      locale,
+      item.currency
+    );
+    const currencyData = currencies.find(
+      (currency) =>
+        currency.currency.toLowerCase() === selectedCurrency.toLowerCase()
+    );
+    const displayedItem = currencyData
+      ? {
+          ...item,
+          currency: currencyData.currency,
+          amount: currencyData.amount,
+          price: currencyData.price,
+          original_price: currencyData.original_price,
+          payment_product_id:
+            currencyData.payment_product_id || item.payment_product_id,
+          payment_providers:
+            currencyData.payment_providers || item.payment_providers,
+        }
+      : item;
+
+    initialCurrencyStates[item.product_id] = {
+      selectedCurrency,
+      displayedItem,
+    };
+  });
+
+  return initialCurrencyStates;
+}
+
 export function Pricing({
   section,
   className,
@@ -114,59 +159,35 @@ export function Pricing({
   const [pricingItem, setPricingItem] = useState<PricingItem | null>(null);
 
   const [isLoading, setIsLoading] = useState(false);
-  const [productId, setProductId] = useState<string | null>(null);
+  const productKey =
+    section.items
+      ?.map((item) => `${item.product_id}:${item.is_featured ? 1 : 0}`)
+      .join(',') ?? '';
+  const defaultProductId =
+    section.items?.find((item) => item.is_featured)?.product_id ||
+    section.items?.[0]?.product_id ||
+    null;
+  const [productKeySeen, setProductKeySeen] = useState(productKey);
+  const [productId, setProductId] = useState<string | null>(defaultProductId);
+  if (productKey !== productKeySeen) {
+    setProductKeySeen(productKey);
+    setProductId(defaultProductId);
+    setIsLoading(false);
+  }
 
   // Currency state management for each item
   // Store selected currency and displayed item for each product_id
-  const [itemCurrencies, setItemCurrencies] = useState<
-    Record<string, { selectedCurrency: string; displayedItem: PricingItem }>
-  >({});
-
-  // Initialize currency states for all items
-  useEffect(() => {
-    if (section.items && section.items.length > 0) {
-      const initialCurrencyStates: Record<
-        string,
-        { selectedCurrency: string; displayedItem: PricingItem }
-      > = {};
-
-      section.items.forEach((item) => {
-        const currencies = getCurrenciesFromItem(item);
-        const selectedCurrency = getInitialCurrency(
-          currencies,
-          locale,
-          item.currency
-        );
-
-        // Create displayed item with selected currency
-        const currencyData = currencies.find(
-          (c) => c.currency.toLowerCase() === selectedCurrency.toLowerCase()
-        );
-
-        const displayedItem = currencyData
-          ? {
-              ...item,
-              currency: currencyData.currency,
-              amount: currencyData.amount,
-              price: currencyData.price,
-              original_price: currencyData.original_price,
-              // Override with currency-specific payment settings if available
-              payment_product_id:
-                currencyData.payment_product_id || item.payment_product_id,
-              payment_providers:
-                currencyData.payment_providers || item.payment_providers,
-            }
-          : item;
-
-        initialCurrencyStates[item.product_id] = {
-          selectedCurrency,
-          displayedItem,
-        };
-      });
-
-      setItemCurrencies(initialCurrencyStates);
-    }
-  }, [section.items, locale]);
+  const currencyKey = `${locale}|${section.items
+    ?.map((item) => `${item.product_id}:${item.currency}:${item.amount}`)
+    .join(',') ?? ''}`;
+  const [currencyKeySeen, setCurrencyKeySeen] = useState(currencyKey);
+  const [itemCurrencies, setItemCurrencies] = useState(() =>
+    buildItemCurrencies(section.items, locale)
+  );
+  if (currencyKey !== currencyKeySeen) {
+    setCurrencyKeySeen(currencyKey);
+    setItemCurrencies(buildItemCurrencies(section.items, locale));
+  }
 
   // Handler for currency change
   const handleCurrencyChange = (productId: string, currency: string) => {
@@ -241,10 +262,14 @@ export function Pricing({
       configs.promotekit_enabled === 'true' &&
       ['stripe'].includes(paymentProvider)
     ) {
-      const promotekitReferral =
-        typeof window !== 'undefined' && (window as any).promotekit_referral
-          ? (window as any).promotekit_referral
-          : getCookie('promotekit_referral') || '';
+      const globalReferral: unknown =
+        typeof window !== 'undefined'
+          ? (window as Window & { promotekit_referral?: unknown })
+              .promotekit_referral
+          : undefined;
+      const promotekitReferral = selectAffiliateReferral(globalReferral, () =>
+        getCookie('promotekit_referral')
+      );
       affiliateMetadata.promotekit_referral = promotekitReferral;
     }
 
@@ -307,22 +332,14 @@ export function Pricing({
       }
 
       window.location.href = checkoutUrl;
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.log('checkout failed: ', e);
-      toast.error('checkout failed: ' + e.message);
+      toast.error('checkout failed: ' + errorMessage(e, 'unknown error'));
 
       setIsLoading(false);
       setProductId(null);
     }
   };
-
-  useEffect(() => {
-    if (section.items) {
-      const featuredItem = section.items.find((i) => i.is_featured);
-      setProductId(featuredItem?.product_id || section.items[0]?.product_id);
-      setIsLoading(false);
-    }
-  }, [section.items]);
 
   return (
     <section

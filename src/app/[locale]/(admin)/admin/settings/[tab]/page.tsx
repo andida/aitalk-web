@@ -3,6 +3,7 @@ import { getTranslations, setRequestLocale } from 'next-intl/server';
 import { PERMISSIONS, requireAllPermissions } from '@/core/rbac';
 import { Header, Main, MainHeader } from '@/shared/blocks/dashboard';
 import { FormCard } from '@/shared/blocks/form';
+import { readFormContextString } from '@/shared/lib/form-action';
 import { getConfigs, saveConfigs } from '@/shared/models/config';
 import { getUserInfo } from '@/shared/models/user';
 import {
@@ -11,7 +12,7 @@ import {
   getSettingTabs,
 } from '@/shared/services/settings';
 import { Crumb } from '@/shared/types/blocks/common';
-import { Form as FormType } from '@/shared/types/blocks/form';
+import { Form as FormType, FormSubmit } from '@/shared/types/blocks/form';
 
 export default async function SettingsPage({
   params,
@@ -42,20 +43,55 @@ export default async function SettingsPage({
 
   const tabs = await getSettingTabs(tab ?? 'auth');
 
-  const handleSubmit = async (data: FormData, passby: any) => {
+  // Only scalar group metadata is captured by the action, never config secrets.
+  const writableGroups = settingGroups
+    .filter((group) => group.tab === tab)
+    .map((group) => ({
+      name: group.name,
+      tab: group.tab,
+      names: settings
+        .filter((setting) => setting.group === group.name)
+        .map((setting) => setting.name),
+    }));
+
+  const handleSubmit: NonNullable<FormSubmit['handler']> = async (
+    data,
+    passby
+  ) => {
     'use server';
 
     const user = await getUserInfo();
-
     if (!user) {
       throw new Error('no auth');
     }
-
-    data.forEach((value, name) => {
-      configs[name] = value as string;
+    await requireAllPermissions({
+      codes: [PERMISSIONS.SETTINGS_READ, PERMISSIONS.SETTINGS_WRITE],
+      redirectUrl: '/admin/no-permission',
+      locale,
     });
 
-    await saveConfigs(configs);
+    const provider = readFormContextString(passby, 'provider');
+    const contextTab = readFormContextString(passby, 'tab');
+    const group = writableGroups.find(
+      (item) => item.name === provider && item.tab === contextTab
+    );
+    if (!group) {
+      throw new Error('invalid settings context');
+    }
+
+    const updates: Record<string, string> = {};
+    data.forEach((value, name) => {
+      if (!group.names.includes(name)) {
+        throw new Error('invalid setting name');
+      }
+      if (typeof value !== 'string') {
+        throw new Error(`${name} must be a string`);
+      }
+      updates[name] = value;
+    });
+
+    // saveConfigs upserts this delta; other groups and historical keys stay intact.
+    await saveConfigs(updates);
 
     return {
       status: 'success',
@@ -63,7 +99,7 @@ export default async function SettingsPage({
     };
   };
 
-  let forms: FormType[] = [];
+  const forms: FormType[] = [];
 
   settingGroups.forEach((group) => {
     if (group.tab !== tab) {
@@ -78,7 +114,7 @@ export default async function SettingsPage({
         .map((setting) => ({
           name: setting.name,
           title: setting.title,
-          type: setting.type as any,
+          type: setting.type,
           placeholder: setting.placeholder,
           group: setting.group,
           options: setting.options,
@@ -90,12 +126,16 @@ export default async function SettingsPage({
         provider: group.name,
         tab: group.tab,
       },
-      data: configs,
+      data: Object.fromEntries(
+        settings
+          .filter((setting) => setting.group === group.name)
+          .map((setting) => [setting.name, configs[setting.name]])
+      ),
       submit: {
         button: {
           title: t('edit.buttons.submit'),
         },
-        handler: handleSubmit as any,
+        handler: handleSubmit,
       },
     });
   });

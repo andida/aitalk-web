@@ -29,7 +29,7 @@
         "./src/*"
       ],
       "@/.source": [
-        "./.source/index.ts"
+        "./.source/server.ts"
       ]
     }
   },

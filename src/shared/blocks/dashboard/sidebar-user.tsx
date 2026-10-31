@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useRef } from 'react';
 import { ChevronsUpDown, Loader2, LogOut, User } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
@@ -30,6 +30,7 @@ import {
   useSidebar,
 } from '@/shared/components/ui/sidebar';
 import { useAppContext } from '@/shared/contexts/app';
+import { useHydrated } from '@/shared/hooks/use-hydrated';
 import { User as UserType } from '@/shared/models/user';
 import { NavItem } from '@/shared/types/blocks/common';
 import { SidebarUser as SidebarUserType } from '@/shared/types/blocks/dashboard';
@@ -46,11 +47,8 @@ export function SidebarUser({ user }: { user: SidebarUserType }) {
   // one tap initialized
   const oneTapInitialized = useRef(false);
 
-  // This state will ensure rendering only happens after client hydration
-  const [hasMounted, setHasMounted] = useState(false);
-  useEffect(() => {
-    setHasMounted(true);
-  }, []);
+  // Render session-dependent UI only after hydration.
+  const hasMounted = useHydrated();
 
   const handleSignOut = async () => {
     await signOut();

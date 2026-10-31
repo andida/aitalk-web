@@ -11,6 +11,13 @@ import {
   AITaskResult,
   AITaskStatus,
 } from './types';
+import {
+  isRecord,
+  readOptions,
+  requireRecord,
+  requiredString,
+  stringArray,
+} from './validation';
 
 /**
  * Gemini configs
@@ -39,30 +46,37 @@ export class GeminiProvider implements AIProvider {
   }: {
     params: AIGenerateParams;
   }): Promise<AITaskResult> {
-    const { mediaType, model, prompt, options } = params;
+    const { mediaType, model, prompt } = params;
 
     if (mediaType !== AIMediaType.IMAGE) {
       throw new Error(`mediaType not supported: ${mediaType}`);
     }
 
-    if (!model) {
+    if (typeof model !== 'string' || !model) {
       throw new Error('model is required');
     }
 
-    if (!prompt) {
+    if (typeof prompt !== 'string' || !prompt) {
       throw new Error('prompt is required');
     }
 
+    const options = readOptions(params.options);
     const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${this.configs.apiKey}`;
 
-    const requestParts: any[] = [
+    const requestParts: Array<
+      { text: string } | { inlineData: { mimeType: string; data: string } }
+    > = [
       {
         text: prompt,
       },
     ];
 
-    if (options && options.image_input && Array.isArray(options.image_input)) {
-      for (const imageUrl of options.image_input) {
+    if (Array.isArray(options.image_input)) {
+      const imageUrls = stringArray(
+        options.image_input,
+        'invalid gemini image_input: expected strings'
+      );
+      for (const imageUrl of imageUrls) {
         try {
           const imageResp = await fetch(imageUrl);
           if (imageResp.ok) {
@@ -85,7 +99,8 @@ export class GeminiProvider implements AIProvider {
       }
     }
 
-    const { image_input, ...generationConfig } = options || {};
+    const generationConfig = { ...options };
+    delete generationConfig.image_input;
 
     const payload = {
       contents: {
@@ -113,28 +128,58 @@ export class GeminiProvider implements AIProvider {
       );
     }
 
-    const data = await resp.json();
+    const rawData: unknown = await resp.json();
+    const data = requireRecord(rawData, 'invalid gemini response');
+    const candidates = data.candidates;
 
-    if (!data.candidates || data.candidates.length === 0) {
+    if (!candidates || (Array.isArray(candidates) && candidates.length === 0)) {
       throw new Error('no candidates returned');
+    }
+    if (!Array.isArray(candidates)) {
+      throw new Error('invalid gemini candidates');
     }
 
     const taskId = nanoid(); // Gemini API doesn't return a task ID for synchronous generation
-    const candidate = data.candidates[0];
-    const parts = candidate.content?.parts;
+    const responseCandidates: unknown[] = candidates;
+    const candidate = requireRecord(
+      responseCandidates[0],
+      'invalid gemini candidate'
+    );
+    const content = candidate.content;
+    const parts =
+      content == null
+        ? undefined
+        : requireRecord(content, 'invalid gemini content').parts;
 
-    if (!parts || parts.length === 0) {
+    if (!parts || (Array.isArray(parts) && parts.length === 0)) {
       throw new Error('no parts returned');
     }
+    if (!Array.isArray(parts)) {
+      throw new Error('invalid gemini parts');
+    }
 
-    const imagePart = parts.find((p: any) => p.inlineData);
+    const responseParts: unknown[] = parts;
+    const selectedPart = responseParts.find((part) => {
+      const record = requireRecord(part, 'invalid gemini part');
+      return Boolean(record.inlineData);
+    });
 
-    if (!imagePart) {
+    if (!isRecord(selectedPart)) {
       throw new Error('no image part returned');
     }
 
-    const mimeType = imagePart.inlineData.mimeType;
-    const base64Data = imagePart.inlineData.data;
+    const inlineData = requireRecord(
+      selectedPart.inlineData,
+      'invalid gemini inlineData'
+    );
+    const mimeType = requiredString(
+      inlineData.mimeType,
+      'invalid gemini inlineData.mimeType'
+    );
+    const base64Data = requiredString(
+      inlineData.data,
+      'invalid gemini inlineData.data'
+    );
 
     // upload to storage
     const { getStorageService } = await import('@/shared/services/storage');
@@ -153,19 +198,9 @@ export class GeminiProvider implements AIProvider {
       throw new Error('upload image failed');
     }
 
-    // replace base64 data with url to save db space
-    if (imagePart.inlineData) {
-      imagePart.inlineData.data = uploadResult.url;
-      // Ensure the original data object is updated
-      const partIndex = parts.findIndex((p: any) => p === imagePart);
-      if (partIndex !== -1 && data.candidates?.[0]?.content?.parts) {
-        // unset image base64 data
-        data.candidates[0].content.parts[partIndex].inlineData.data =
-          uploadResult.url;
-        // unset thoughtSignature
-        data.candidates[0].content.parts[partIndex].thoughtSignature = '';
-      }
-    }
+    // The selected records are references into data; preserve every other part.
+    inlineData.data = uploadResult.url;
+    selectedPart.thoughtSignature = '';
 
     const image: AIImage = {
       id: nanoid(),

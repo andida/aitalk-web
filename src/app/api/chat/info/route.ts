@@ -4,7 +4,7 @@ import { getUserInfo } from '@/shared/models/user';
 
 export async function POST(req: Request) {
   try {
-    let { chatId } = await req.json();
+    const { chatId } = await req.json();
     if (!chatId) {
       return respErr('chatId is required');
     }
@@ -24,8 +24,10 @@ export async function POST(req: Request) {
     }
 
     return respData(chat);
-  } catch (e: any) {
+  } catch (e: unknown) {
     console.log('get chat info failed:', e);
-    return respErr(`get chat info failed: ${e.message}`);
+    return respErr(
+      `get chat info failed: ${e instanceof Error ? e.message : 'unknown error'}`
+    );
   }
 }

@@ -67,7 +67,7 @@ export class ReplicateProvider implements AIProvider {
     }
 
     // build request params
-    const input: any = this.formatInput({
+    const input = this.formatInput({
       mediaType,
       model,
       prompt,
@@ -114,11 +114,17 @@ export class ReplicateProvider implements AIProvider {
       if (mediaType === AIMediaType.VIDEO) {
         // handle video output
         if (Array.isArray(data.output)) {
-          videos = data.output.map((video: any) => ({
-            id: '',
-            createTime: new Date(data.created_at),
-            videoUrl: video,
-          }));
+          videos = data.output.flatMap((video: unknown) =>
+            typeof video === 'string'
+              ? [
+                  {
+                    id: '',
+                    createTime: new Date(data.created_at),
+                    videoUrl: video,
+                  },
+                ]
+              : []
+          );
         } else if (typeof data.output === 'string') {
           videos = [
             {
@@ -131,11 +137,17 @@ export class ReplicateProvider implements AIProvider {
       } else {
         // handle image output (default)
         if (Array.isArray(data.output)) {
-          images = data.output.map((image: any) => ({
-            id: '',
-            createTime: new Date(data.created_at),
-            imageUrl: image,
-          }));
+          images = data.output.flatMap((image: unknown) =>
+            typeof image === 'string'
+              ? [
+                  {
+                    id: '',
+                    createTime: new Date(data.created_at),
+                    imageUrl: image,
+                  },
+                ]
+              : []
+          );
         } else if (typeof data.output === 'string') {
           images = [
             {
@@ -255,9 +267,9 @@ export class ReplicateProvider implements AIProvider {
     mediaType: AIMediaType;
     model: string;
     prompt: string;
-    options: any;
-  }): any {
-    let input: any = {
+    options: Record<string, unknown> | undefined;
+  }): Record<string, unknown> {
+    let input: Record<string, unknown> = {
       prompt,
     };
 

@@ -44,7 +44,8 @@ export function SignUp({
   const isEmailAuthEnabled =
     configs.email_auth_enabled !== 'false' ||
     (!isGoogleAuthEnabled && !isGithubAuthEnabled); // no social providers enabled, auto enable email auth
-  const emailVerificationEnabled = configs.email_verification_enabled === 'true';
+  const emailVerificationEnabled =
+    configs.email_verification_enabled === 'true';
 
   if (callbackUrl) {
     if (
@@ -77,7 +78,10 @@ export function SignUp({
       return;
     }
 
-    const windowObject = window as any;
+    const windowObject = window as Window & {
+      Affonso?: { signup: (email: string) => void };
+      promotekit?: { refer: (email: string, customerId?: string) => void };
+    };
 
     if (configs.affonso_enabled === 'true' && windowObject.Affonso) {
       windowObject.Affonso.signup(userEmail);
@@ -128,11 +132,11 @@ export function SignUp({
                 email
               )}&callbackUrl=${encodeURIComponent(normalizedCallbackUrl)}`;
 
-            // IMPORTANT: callbackURL must not contain its own '&' query params.
-            // We redirect to home/callbackUrl after verification; verify page is just the waiting UI.
+              // IMPORTANT: callbackURL must not contain its own '&' query params.
+              // We redirect to home/callbackUrl after verification; verify page is just the waiting UI.
               void authClient.sendVerificationEmail({
                 email,
-              callbackURL: `${base}${normalizedCallbackUrl || '/'}`,
+                callbackURL: `${base}${normalizedCallbackUrl || '/'}`,
               });
 
               // next/navigation router expects fully qualified path (including locale when non-default)
@@ -142,14 +146,16 @@ export function SignUp({
 
             router.push(callbackUrl);
           },
-          onError: (e: any) => {
+          onError: (e) => {
             toast.error(e?.error?.message || 'sign up failed');
             setLoading(false);
           },
         }
       );
-    } catch (e: any) {
-      toast.error(e?.message || 'sign up failed');
+    } catch (e: unknown) {
+      toast.error(
+        e instanceof Error && e.message ? e.message : 'sign up failed'
+      );
       setLoading(false);
     }
   };
@@ -201,7 +207,7 @@ export function SignUp({
                   value={email}
                 />
                 {emailVerificationEnabled && (
-                  <p className="text-amber-600 text-xs">
+                  <p className="text-xs text-amber-600">
                     {t('email_verification_hint')}
                   </p>
                 )}

@@ -1,4 +1,4 @@
-export type JsonRecord = Record<string, any>;
+export type JsonRecord = Record<string, unknown>;
 
 export interface AitalkProfile {
   id?: number;
@@ -241,6 +241,7 @@ export interface LessonAttempt {
   scores?: JsonRecord | null;
   feedback?: TutorPracticeReport | JsonRecord | null;
   metadata?: JsonRecord | null;
+  trusted_completion_version?: number | null;
 }
 
 export interface ActiveLearningPlan {
@@ -264,7 +265,7 @@ export interface AitalkCollect {
 export interface AitalkUsage {
   vipStatus?: string;
   vip_status?: string;
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 export interface OnboardingInput {

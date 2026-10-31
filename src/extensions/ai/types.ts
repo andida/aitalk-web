@@ -2,7 +2,7 @@
  * AI Configs to use AI functions
  */
 export interface AIConfigs {
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 /**
@@ -35,13 +35,13 @@ export interface AIImage {
   id?: string;
   createTime?: Date;
   imageType?: string;
-  imageUrl?: string;
+  imageUrl?: string | null;
 }
 
 export interface AIVideo {
   id?: string;
   createTime?: Date;
-  videoUrl?: string;
+  videoUrl?: string | null;
   thumbnailUrl?: string;
   duration?: number;
 }
@@ -54,7 +54,7 @@ export interface AIGenerateParams {
   prompt: string;
   model?: string;
   // custom options
-  options?: any;
+  options?: Record<string, unknown>;
   // receive notify result
   callbackUrl?: string;
   // is return stream
@@ -91,7 +91,7 @@ export interface AITaskResult {
   taskStatus: AITaskStatus;
   taskId: string; // provider task id
   taskInfo?: AITaskInfo;
-  taskResult?: any; // raw result from provider
+  taskResult?: unknown; // raw result from provider
 }
 
 export interface AIFile {

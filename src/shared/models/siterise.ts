@@ -14,6 +14,7 @@ import {
   inArray,
   isNull,
   notInArray,
+  type SQL,
 } from 'drizzle-orm';
 
 import { db } from '@/core/db';
@@ -717,10 +718,10 @@ export async function getTrafficRefreshCandidates({
   const freshIds: string[] = Array.from(
     new Set(freshRows.map((row: { domainId: string }) => row.domainId))
   );
-  const conditions: any[] = [eq(siteriseDomain.status, 'active')];
+  const conditions: SQL[] = [eq(siteriseDomain.status, 'active')];
 
   if (freshIds.length > 0) {
-    conditions.push(notInArrayCompat(siteriseDomain.id, freshIds));
+    conditions.push(notInArray(siteriseDomain.id, freshIds));
   }
 
   return db()
@@ -742,7 +743,7 @@ export async function getWhoisRefreshCandidates({
   limit?: number;
   missingOnly?: boolean;
 } = {}): Promise<WhoisRefreshCandidate[]> {
-  const conditions: any[] = [eq(siteriseDomain.status, 'active')];
+  const conditions: SQL[] = [eq(siteriseDomain.status, 'active')];
 
   if (missingOnly) {
     conditions.push(isNull(siteriseDomain.registeredAt));
@@ -1018,14 +1019,14 @@ export async function buildGrowthLeaderboard({
         },
       };
     })
-    .filter(Boolean)
-    .sort((a: any, b: any) => {
+    .filter((entry) => entry !== null)
+    .sort((a, b) => {
       const scoreDelta = Number(b.score || 0) - Number(a.score || 0);
       if (scoreDelta !== 0) return scoreDelta;
       return Number(b.visitsDelta || 0) - Number(a.visitsDelta || 0);
     })
     .slice(0, limit)
-    .map((entry: any, index: number) => ({
+    .map((entry, index: number) => ({
       ...entry,
       rank: index + 1,
     }));
@@ -1114,10 +1115,10 @@ export async function buildNewWebsiteLeaderboard({
         },
       };
     })
-    .filter(Boolean)
-    .sort((a: any, b: any) => Number(b.visits || 0) - Number(a.visits || 0))
+    .filter((entry) => entry !== null)
+    .sort((a, b) => Number(b.visits || 0) - Number(a.visits || 0))
     .slice(0, limit)
-    .map((entry: any, index: number) => ({
+    .map((entry, index: number) => ({
       ...entry,
       rank: index + 1,
     }));
@@ -1516,7 +1517,7 @@ async function findLeaderboardRun({
   source?: TrafficDataSource;
   includeUnready?: boolean;
 }) {
-  const conditions: any[] = [
+  const conditions: SQL[] = [
     eq(siteriseLeaderboardRun.kind, kind),
     eq(siteriseLeaderboardRun.displayDate, displayDate),
     eq(siteriseLeaderboardRun.country, country),
@@ -1554,7 +1555,7 @@ async function getLatestLeaderboardMonth({
   category?: string;
   source?: TrafficDataSource;
 }) {
-  const conditions: any[] = [
+  const conditions: SQL[] = [
     eq(siteriseLeaderboardRun.kind, kind),
     eq(siteriseLeaderboardRun.country, country),
     category
@@ -1831,10 +1832,6 @@ function getTld(rootDomain: string) {
 function hashIp(ip?: string | null) {
   if (!ip) return null;
   return md5(ip);
-}
-
-function notInArrayCompat(column: any, values: string[]) {
-  return notInArray(column, values);
 }
 
 function emptyToNull(value?: string | null) {

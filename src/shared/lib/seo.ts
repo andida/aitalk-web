@@ -38,7 +38,9 @@ export function getMetadata(
     );
 
     // translated metadata
-    let translatedMetadata: any = {};
+    let translatedMetadata: Partial<
+      Awaited<ReturnType<typeof getTranslatedMetadata>>
+    > = {};
     if (options.metadataKey) {
       translatedMetadata = await getTranslatedMetadata(
         options.metadataKey,

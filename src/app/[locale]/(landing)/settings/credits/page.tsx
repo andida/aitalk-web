@@ -45,7 +45,7 @@ export default async function CreditsPage({
     limit,
   });
 
-  const table: Table = {
+  const table: Table<Credit> = {
     title: t('list.title'),
     columns: [
       {

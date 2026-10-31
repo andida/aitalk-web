@@ -1,6 +1,6 @@
 import { and, count, desc, eq, sql } from 'drizzle-orm';
 
-import { db } from '@/core/db';
+import { db, type DatabaseSession } from '@/core/db';
 import { aiTask, credit } from '@/config/db/schema';
 import { AITaskStatus } from '@/extensions/ai';
 import { appendUserToResult, User } from '@/shared/models/user';
@@ -13,8 +13,38 @@ export type AITask = typeof aiTask.$inferSelect & {
 export type NewAITask = typeof aiTask.$inferInsert;
 export type UpdateAITask = Partial<Omit<NewAITask, 'id' | 'createdAt'>>;
 
+type RestoredCredit = {
+  creditId?: string;
+  creditsConsumed?: number;
+};
+
+function restoredCredits(value: string): RestoredCredit[] {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(parsed)) return [];
+
+  return parsed.flatMap((item) => {
+    if (!item || typeof item !== 'object') return [];
+    const record = item as Record<string, unknown>;
+    return [
+      {
+        creditId:
+          typeof record.creditId === 'string' ? record.creditId : undefined,
+        creditsConsumed:
+          typeof record.creditsConsumed === 'number'
+            ? record.creditsConsumed
+            : undefined,
+      },
+    ];
+  });
+}
+
 export async function createAITask(newAITask: NewAITask) {
-  const result = await db().transaction(async (tx: any) => {
+  const result = await db().transaction(async (tx: DatabaseSession) => {
     // 1. create task record
     const [taskResult] = await tx.insert(aiTask).values(newAITask).returning();
 
@@ -55,7 +85,7 @@ export async function findAITaskById(id: string) {
 }
 
 export async function updateAITaskById(id: string, updateAITask: UpdateAITask) {
-  const result = await db().transaction(async (tx: any) => {
+  const result = await db().transaction(async (tx: DatabaseSession) => {
     // task failed, Revoke credit consumption record
     if (updateAITask.status === AITaskStatus.FAILED && updateAITask.creditId) {
       // get consumed credit record
@@ -64,18 +94,19 @@ export async function updateAITaskById(id: string, updateAITask: UpdateAITask) {
         .from(credit)
         .where(eq(credit.id, updateAITask.creditId));
       if (consumedCredit && consumedCredit.status === CreditStatus.ACTIVE) {
-        const consumedItems = JSON.parse(consumedCredit.consumedDetail || '[]');
-
-        // console.log('consumedItems', consumedItems);
+        const consumedItems = restoredCredits(
+          consumedCredit.consumedDetail || '[]'
+        );
 
         // add back consumed credits
         await Promise.all(
-          consumedItems.map((item: any) => {
-            if (item && item.creditId && item.creditsConsumed > 0) {
+          consumedItems.map((item) => {
+            if (item?.creditId && item.creditsConsumed && item.creditsConsumed > 0) {
+              const creditsConsumed = item.creditsConsumed;
               return tx
                 .update(credit)
                 .set({
-                  remainingCredits: sql`${credit.remainingCredits} + ${item.creditsConsumed}`,
+                  remainingCredits: sql`${credit.remainingCredits} + ${creditsConsumed}`,
                 })
                 .where(eq(credit.id, item.creditId));
             }

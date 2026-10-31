@@ -7,6 +7,7 @@ import useEmblaCarousel, {
 import { ArrowLeft, ArrowRight } from "lucide-react"
 
 import { cn } from "@/shared/lib/utils"
+import { carouselNavigationSnapshot, subscribeCarouselNavigation } from "@/shared/lib/carousel-navigation"
 import { Button } from "@/shared/components/ui/button"
 
 type CarouselApi = UseEmblaCarouselType[1]
@@ -58,14 +59,14 @@ function Carousel({
     },
     plugins
   )
-  const [canScrollPrev, setCanScrollPrev] = React.useState(false)
-  const [canScrollNext, setCanScrollNext] = React.useState(false)
-
-  const onSelect = React.useCallback((api: CarouselApi) => {
-    if (!api) return
-    setCanScrollPrev(api.canScrollPrev())
-    setCanScrollNext(api.canScrollNext())
-  }, [])
+  const subscribe = React.useCallback(
+    (onChange: () => void) => subscribeCarouselNavigation(api, onChange),
+    [api]
+  )
+  const getSnapshot = React.useCallback(() => carouselNavigationSnapshot(api), [api])
+  const navigation = React.useSyncExternalStore(subscribe, getSnapshot, () => 0)
+  const canScrollPrev = Boolean(navigation & 1)
+  const canScrollNext = Boolean(navigation & 2)
 
   const scrollPrev = React.useCallback(() => {
     api?.scrollPrev()
@@ -92,17 +93,6 @@ function Carousel({
     if (!api || !setApi) return
     setApi(api)
   }, [api, setApi])
-
-  React.useEffect(() => {
-    if (!api) return
-    onSelect(api)
-    api.on("reInit", onSelect)
-    api.on("select", onSelect)
-
-    return () => {
-      api?.off("select", onSelect)
-    }
-  }, [api, onSelect])
 
   return (
     <CarouselContext.Provider

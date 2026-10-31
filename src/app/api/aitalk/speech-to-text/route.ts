@@ -102,12 +102,16 @@ export async function POST(request: Request) {
         'Cache-Control': 'no-store',
       },
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const caughtError = error instanceof Error ? error : undefined;
     console.error('aitalk_speech_to_text_failed', {
-      message: error?.message,
-      stack: error?.stack,
-      name: error?.name,
+      message: caughtError?.message,
+      stack: caughtError?.stack,
+      name: caughtError?.name,
     });
-    return jsonError(error?.message || 'Speech transcription failed.', 500);
+    return jsonError(
+      caughtError?.message || 'Speech transcription failed.',
+      500
+    );
   }
 }

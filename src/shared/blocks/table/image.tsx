@@ -1,17 +1,20 @@
 import { LazyImage } from '@/shared/blocks/common';
 import { cn } from '@/shared/lib/utils';
+import { imageSize } from './image-size';
+import { ownValue, safeUrl } from './value';
 
 export function Image({
-  value,
+  value: suppliedValue,
   metadata,
   placeholder,
   className,
 }: {
-  value: string;
-  metadata?: Record<string, any>;
+  value: unknown;
+  metadata?: unknown;
   placeholder?: string;
   className?: string;
 }) {
+  const value = safeUrl(suppliedValue);
   if (!value) {
     if (placeholder) {
       return <div className={className}>{placeholder}</div>;
@@ -20,8 +23,8 @@ export function Image({
     return null;
   }
 
-  const width = metadata?.width || 40;
-  const height = metadata?.height || 40;
+  const width = imageSize(ownValue(metadata, 'width'));
+  const height = imageSize(ownValue(metadata, 'height'));
 
   return (
     <LazyImage

@@ -1,3 +1,5 @@
+import { errorMessage } from '@/shared/lib/error-message';
+
 import {
   CheckoutSession,
   PaymentBilling,
@@ -14,6 +16,73 @@ import {
   SubscriptionInfo,
   SubscriptionStatus,
 } from './types';
+
+type CreemCustomer = { id?: string; email?: string; name?: string };
+type CreemOrder = {
+  id?: string;
+  status?: string;
+  description?: string;
+  amount?: number;
+  currency?: string;
+  transaction?: string;
+  discount_amount?: number;
+  amount_paid?: number;
+  created_at?: string;
+};
+type CreemProduct = {
+  id?: string;
+  description?: string;
+  price?: number;
+  currency?: string;
+  billing_period?: string;
+};
+type CreemSubscription = {
+  id: string;
+  status?: string;
+  created_at?: string;
+  current_period_start_date?: string;
+  current_period_end_date?: string;
+  canceled_at?: string;
+  cancel_at?: string;
+  metadata?: Record<string, unknown>;
+  product?: CreemProduct;
+  customer?: CreemCustomer;
+  order?: CreemOrder;
+};
+type CreemSession = {
+  id?: string;
+  status?: string;
+  created_at?: string;
+  current_period_start_date?: string;
+  current_period_end_date?: string;
+  canceled_at?: string;
+  cancel_at?: string;
+  metadata?: Record<string, unknown>;
+  order?: CreemOrder;
+  last_transaction?: CreemOrder;
+  subscription?: CreemSubscription;
+  product?: CreemProduct;
+  customer?: CreemCustomer;
+};
+
+function parseCreemEvent(value: unknown): {
+  eventType: string;
+  object: Record<string, unknown>;
+  raw: Record<string, unknown>;
+} {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('Invalid webhook payload');
+  }
+  const event = value as Record<string, unknown>;
+  if (typeof event.eventType !== 'string' || !event.eventType) {
+    throw new Error('Invalid webhook payload');
+  }
+  const object = event.object;
+  if (!object || typeof object !== 'object' || Array.isArray(object)) {
+    throw new Error('Invalid webhook event object');
+  }
+  return { eventType: event.eventType, object: object as Record<string, unknown>, raw: event };
+}
 
 /**
  * Creem payment provider configs
@@ -55,7 +124,7 @@ export class CreemProvider implements PaymentProvider {
       }
 
       // build payment payload
-      const payload: any = {
+      const payload = {
         product_id: order.productId,
         request_id: order.requestId || undefined,
         units: 1,
@@ -153,11 +222,8 @@ export class CreemProvider implements PaymentProvider {
       }
 
       // parse the webhook payload
-      const event = JSON.parse(rawBody);
-
-      if (!event || !event.eventType) {
-        throw new Error('Invalid webhook payload');
-      }
+      const rawEvent: unknown = JSON.parse(rawBody);
+      const event = parseCreemEvent(rawEvent);
 
       let paymentSession: PaymentSession | undefined = undefined;
 
@@ -165,19 +231,19 @@ export class CreemProvider implements PaymentProvider {
 
       if (eventType === PaymentEventType.CHECKOUT_SUCCESS) {
         paymentSession = await this.buildPaymentSessionFromCheckoutSession(
-          event.object as any
+          event.object as CreemSession
         );
       } else if (eventType === PaymentEventType.PAYMENT_SUCCESS) {
         paymentSession = await this.buildPaymentSessionFromInvoice(
-          event.object as any
+          event.object as CreemSession
         );
       } else if (eventType === PaymentEventType.SUBSCRIBE_UPDATED) {
         paymentSession = await this.buildPaymentSessionFromSubscription(
-          event.object as any
+          event.object as CreemSubscription
         );
       } else if (eventType === PaymentEventType.SUBSCRIBE_CANCELED) {
         paymentSession = await this.buildPaymentSessionFromSubscription(
-          event.object as any
+          event.object as CreemSubscription
         );
       }
 
@@ -187,7 +253,7 @@ export class CreemProvider implements PaymentProvider {
 
       return {
         eventType: eventType,
-        eventResult: event,
+        eventResult: event.raw,
         paymentSession: paymentSession,
       };
     } catch (error) {
@@ -263,12 +329,12 @@ export class CreemProvider implements PaymentProvider {
       return Array.from(signatureArray)
         .map((b) => b.toString(16).padStart(2, '0'))
         .join('');
-    } catch (error: any) {
-      throw new Error(`Failed to generate signature: ${error.message}`);
+    } catch (error: unknown) {
+      throw new Error(`Failed to generate signature: ${errorMessage(error, 'unknown error')}`);
     }
   }
 
-  private async makeRequest(endpoint: string, method: string, data?: any) {
+  private async makeRequest(endpoint: string, method: string, data?: unknown) {
     const url = `${this.baseUrl}${endpoint}`;
     const headers = {
       'x-api-key': this.configs.apiKey,
@@ -318,7 +384,7 @@ export class CreemProvider implements PaymentProvider {
     }
   }
 
-  private mapCreemStatus(session: any): PaymentStatus {
+  private mapCreemStatus(session: CreemSession): PaymentStatus {
     const status = session.status;
     const order = session.order || session.last_transaction;
     const orderStatus = order?.status;
@@ -333,10 +399,10 @@ export class CreemProvider implements PaymentProvider {
 
   // build payment session from checkout session
   private async buildPaymentSessionFromCheckoutSession(
-    session: any
+    session: CreemSession
   ): Promise<PaymentSession> {
-    let subscription: any | undefined = undefined;
-    let billingUrl = '';
+    let subscription: CreemSubscription | undefined = undefined;
+    const billingUrl = '';
 
     if (session.subscription) {
       subscription = session.subscription;
@@ -381,15 +447,15 @@ export class CreemProvider implements PaymentProvider {
 
   // build payment session from subscription session
   private async buildPaymentSessionFromInvoice(
-    invoice: any
+    invoice: CreemSession
   ): Promise<PaymentSession> {
     const order = invoice.order || invoice.last_transaction;
 
     const subscription = invoice.subscription || invoice;
 
-    const subscriptionCreatedAt = new Date(subscription.created_at);
+    const subscriptionCreatedAt = new Date(subscription.created_at || Date.now());
     const currentPeriodStartAt = new Date(
-      subscription.current_period_start_date
+      subscription.current_period_start_date || Date.now()
     );
     const timeDiff =
       currentPeriodStartAt.getTime() - subscriptionCreatedAt.getTime();
@@ -438,7 +504,7 @@ export class CreemProvider implements PaymentProvider {
 
   // build payment session from subscription
   private async buildPaymentSessionFromSubscription(
-    subscription: any
+    subscription: CreemSubscription
   ): Promise<PaymentSession> {
     const result: PaymentSession = {
       provider: this.name,
@@ -458,20 +524,24 @@ export class CreemProvider implements PaymentProvider {
 
   // build subscription info from subscription
   private async buildSubscriptionInfo(
-    subscription: any,
-    product?: any
+    subscription: CreemSubscription | CreemSession,
+    product?: CreemProduct
   ): Promise<SubscriptionInfo> {
     const { interval, count: intervalCount } = this.mapCreemInterval(product);
 
     const subscriptionInfo: SubscriptionInfo = {
-      subscriptionId: subscription.id,
+      subscriptionId: subscription.id ?? '',
       productId: product?.id,
       planId: '',
       description: product?.description,
       amount: product?.price,
       currency: product?.currency,
-      currentPeriodStart: new Date(subscription.current_period_start_date),
-      currentPeriodEnd: new Date(subscription.current_period_end_date),
+      currentPeriodStart: new Date(
+        subscription.current_period_start_date || Date.now()
+      ),
+      currentPeriodEnd: new Date(
+        subscription.current_period_end_date || Date.now()
+      ),
       interval: interval,
       intervalCount: intervalCount,
       metadata: subscription.metadata,
@@ -481,14 +551,18 @@ export class CreemProvider implements PaymentProvider {
       if (subscription.cancel_at) {
         subscriptionInfo.status = SubscriptionStatus.PENDING_CANCEL;
         // cancel apply at
-        subscriptionInfo.canceledAt = new Date(subscription.canceled_at);
+        subscriptionInfo.canceledAt = new Date(
+          subscription.canceled_at || Date.now()
+        );
       } else {
         subscriptionInfo.status = SubscriptionStatus.ACTIVE;
       }
     } else if (subscription.status === 'canceled') {
       // subscription canceled
       subscriptionInfo.status = SubscriptionStatus.CANCELED;
-      subscriptionInfo.canceledAt = new Date(subscription.canceled_at);
+      subscriptionInfo.canceledAt = new Date(
+        subscription.canceled_at || Date.now()
+      );
     } else if (subscription.status === 'trialing') {
       subscriptionInfo.status = SubscriptionStatus.TRIALING;
     } else if (subscription.status === 'paused') {
@@ -502,7 +576,7 @@ export class CreemProvider implements PaymentProvider {
     return subscriptionInfo;
   }
 
-  private mapCreemInterval(product: any): {
+  private mapCreemInterval(product?: CreemProduct): {
     interval: PaymentInterval;
     count: number;
   } {

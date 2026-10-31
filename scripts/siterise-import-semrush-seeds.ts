@@ -370,7 +370,7 @@ function escapeCsv(value: unknown) {
 }
 
 function parseArgs(args: string[]) {
-  const parsed: Record<string, any> = {};
+  const parsed: Record<string, string | boolean | undefined> = {};
 
   for (let i = 0; i < args.length; i += 1) {
     const arg = args[i];

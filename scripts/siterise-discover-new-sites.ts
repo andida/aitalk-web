@@ -145,7 +145,7 @@ async function getProductHuntAccessToken() {
   return json.access_token;
 }
 
-function getOptions(args: Record<string, any>): DiscoveryRuntimeOptions {
+function getOptions(args: Record<string, string | boolean | undefined>): DiscoveryRuntimeOptions {
   return {
     days: parsePositiveInt(args.days, 90),
     candidateLimit: parsePositiveInt(args.candidateLimit, 500),
@@ -161,7 +161,7 @@ function getOptions(args: Record<string, any>): DiscoveryRuntimeOptions {
       args.minDr || process.env.DISCOVERY_MIN_DR,
       0
     ),
-    country: normalizeCountry(args.country || 'global'),
+    country: normalizeCountry(String(args.country || 'global')),
     dryRun: Boolean(args.dryRun),
     buildLeaderboard: args.buildLeaderboard !== false,
     dnsTimeoutMs: parsePositiveInt(
@@ -177,8 +177,10 @@ function getOptions(args: Record<string, any>): DiscoveryRuntimeOptions {
         ? false
         : process.env.PRODUCT_HUNT_DISCOVERY_ENABLED !== 'false',
     hackerNewsEnabled: args.hackerNews !== false,
-    similarwebCsvFile: args.similarwebCsv || args.categoryCsv,
-    candidateFile: args.file || args.candidateFile,
+    similarwebCsvFile: typeof (args.similarwebCsv || args.categoryCsv) === 'string'
+      ? String(args.similarwebCsv || args.categoryCsv) : undefined,
+    candidateFile: typeof (args.file || args.candidateFile) === 'string'
+      ? String(args.file || args.candidateFile) : undefined,
   };
 }
 
@@ -210,7 +212,7 @@ function summarizeRejected(
 }
 
 function parseArgs(args: string[]) {
-  const parsed: Record<string, any> = {};
+  const parsed: Record<string, string | boolean | undefined> = {};
 
   for (let i = 0; i < args.length; i += 1) {
     const arg = args[i];

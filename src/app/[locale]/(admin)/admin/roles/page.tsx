@@ -30,7 +30,7 @@ export default async function AdminRolesPage({
     { title: t('list.crumbs.roles'), is_active: true },
   ];
 
-  const table: Table = {
+  const table: Table<Role> = {
     columns: [
       { name: 'name', title: t('fields.name') },
       { name: 'title', title: t('fields.title') },
@@ -38,7 +38,6 @@ export default async function AdminRolesPage({
       { name: 'status', title: t('fields.status'), type: 'label' },
       { name: 'createdAt', title: t('fields.created_at'), type: 'time' },
       {
-        name: 'actions',
         title: t('fields.actions'),
         type: 'dropdown',
         callback: (item: Role) => [
